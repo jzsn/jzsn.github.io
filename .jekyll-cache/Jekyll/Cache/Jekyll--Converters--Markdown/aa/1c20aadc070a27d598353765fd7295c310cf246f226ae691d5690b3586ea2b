@@ -1,0 +1,176 @@
+I"�:<h2 id="实验目的">实验目的</h2>
+
+<p>学习 Pandas 数据分析基础，统计描述及数据可视化等</p>
+
+<h2 id="实验简介">实验简介</h2>
+
+<p>Pandas 数据导入；数据变换处理；统计汇总描述；假设检验；可视化等</p>
+
+<h2 id="实验环境">实验环境</h2>
+
+<h3 id="硬件">硬件</h3>
+
+<p>所用机器型号为 VAIO Z Flip 2016</p>
+
+<ul>
+  <li>Intel(R) Core(TM) i7-6567U CPU @3.30GHZ 3.31GHz</li>
+  <li>8.00GB RAM</li>
+</ul>
+
+<h3 id="软件">软件</h3>
+
+<ul>
+  <li>Windows 10, 64-bit (Build 17763) 10.0.17763</li>
+  <li>Windows Subsystem for Linux [Ubuntu 18.04.2 LTS]：WSL 是以软件的形式运行在 Windows 下的 Linux 子系统，是近些年微软推出来的新工具，可以在 Windows 系统上原生运行 Linux。</li>
+  <li>Python 3.7.4 64-bit (‘anaconda3’:virtualenv)</li>
+  <li>juyter nootbooks</li>
+</ul>
+
+<h2 id="实验步骤代码结果与分析">实验步骤、代码、结果与分析</h2>
+
+<h3 id="导入数据将-dfdataframe-转换成-numpy-数据类型">导入数据，将 df.DataFrame 转换成 Numpy 数据类型</h3>
+
+<h4 id="input">input</h4>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="n">pd</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="p">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s">"anscombe.csv"</span><span class="p">)</span>
+<span class="n">np</span><span class="p">.</span><span class="n">array</span><span class="p">(</span><span class="n">df</span><span class="p">)</span> <span class="c1"># 将 df.DataFrame 转换成 Numpy 数据类型
+</span></code></pre></div></div>
+
+<h4 id="output">output</h4>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">array</span><span class="p">([[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">8.04</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">6.95</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">13.0</span><span class="p">,</span> <span class="mf">7.58</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">9.0</span><span class="p">,</span> <span class="mf">8.81</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">11.0</span><span class="p">,</span> <span class="mf">8.33</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">14.0</span><span class="p">,</span> <span class="mf">9.96</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">,</span> <span class="mf">7.24</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">4.26</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">10.84</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">7.0</span><span class="p">,</span> <span class="mf">4.82</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'I'</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">5.68</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">9.14</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">8.14</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">13.0</span><span class="p">,</span> <span class="mf">8.74</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">9.0</span><span class="p">,</span> <span class="mf">8.77</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">11.0</span><span class="p">,</span> <span class="mf">9.26</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">14.0</span><span class="p">,</span> <span class="mf">8.1</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">,</span> <span class="mf">6.13</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">3.1</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">9.13</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">7.0</span><span class="p">,</span> <span class="mf">7.26</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'II'</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">4.74</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">7.46</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">6.77</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">13.0</span><span class="p">,</span> <span class="mf">12.74</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">9.0</span><span class="p">,</span> <span class="mf">7.11</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">11.0</span><span class="p">,</span> <span class="mf">7.81</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">14.0</span><span class="p">,</span> <span class="mf">8.84</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">,</span> <span class="mf">6.08</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">5.39</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">8.15</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">7.0</span><span class="p">,</span> <span class="mf">6.42</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'III'</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">5.73</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">6.58</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">5.76</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">7.71</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">8.84</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">8.47</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">7.04</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">5.25</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">19.0</span><span class="p">,</span> <span class="mf">12.5</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">5.56</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">7.91</span><span class="p">],</span>
+       <span class="p">[</span><span class="s">'IV'</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mf">6.89</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">object</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h3 id="操作说明-pandas-数据缺失值处理reindexdropnafillnaisnull">操作说明 pandas 数据缺失值处理：reindex()，dropna()，fillna()，isnull()</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">df</span><span class="p">.</span><span class="n">reindex</span><span class="p">([</span><span class="s">'a'</span><span class="p">,</span><span class="s">'b'</span><span class="p">,</span><span class="s">'c'</span><span class="p">])</span>
+</code></pre></div></div>
+
+<p>原图的列下标换成了<code class="highlighter-rouge">['a','b','c']</code>。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">df</span><span class="p">.</span><span class="n">reindex</span><span class="p">([</span><span class="s">'a'</span><span class="p">,</span><span class="s">'b'</span><span class="p">,</span><span class="s">'c'</span><span class="p">]).</span><span class="n">dropna</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>在上一步的基础上删去了所有 NaN 值，于是输出了一张空表。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">df</span><span class="p">.</span><span class="n">reindex</span><span class="p">([</span><span class="s">'a'</span><span class="p">,</span><span class="s">'b'</span><span class="p">,</span><span class="s">'c'</span><span class="p">]).</span><span class="n">fillna</span><span class="p">(</span><span class="mi">17341163</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>在第一步的基础上把所有 NaN 换成了我的学号<code class="highlighter-rouge">17341163</code>。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">df</span><span class="p">.</span><span class="n">isnull</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>用布尔值填充原表。</p>
+
+<h3 id="探索-pandas-中的可视化工具折线图饼状图等对该数据集进行深入分析">探索 pandas 中的可视化工具（折线图、饼状图等）对该数据集进行深入分析</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">matplotlib</span>
+<span class="n">matplotlib</span><span class="p">.</span><span class="n">pyplot</span><span class="p">.</span><span class="n">show</span><span class="p">(</span><span class="n">df</span><span class="p">.</span><span class="n">mean</span><span class="p">().</span><span class="n">plot</span><span class="p">(</span><span class="n">kind</span> <span class="o">=</span> <span class="s">'line'</span><span class="p">))</span> <span class="c1"># 折线图
+</span></code></pre></div></div>
+
+<p>如图（见附件<code class="highlighter-rouge">吴坎(17341163)_lab4_1.ipynb</code>），原数据集的均值先增后减。</p>
+
+<h3 id="探索-pandas-中分组及统计操作利用-pandas-或-numpy-统计函数计算-anscombe-数据的统计值">探索 pandas 中分组及统计操作。利用 pandas 或 numpy 统计函数，计算 Anscombe 数据的统计值</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">df</span><span class="p">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="s">"dataset"</span><span class="p">).</span><span class="n">mean</span><span class="p">()</span>
+</code></pre></div></div>
+
+<h2 id="实验总结">实验总结</h2>
+
+<p>一些 Pandas 的基础操作，还是相对比较简单，没有遇到多大问题。</p>
+
+<h2 id="使用的数据集anscombecsv">使用的数据集<code class="highlighter-rouge">anscombe.csv</code></h2>
+
+<pre><code class="language-csv">dataset,x,y
+I,10.0,8.04
+I,8.0,6.95
+I,13.0,7.58
+I,9.0,8.81
+I,11.0,8.33
+I,14.0,9.96
+I,6.0,7.24
+I,4.0,4.26
+I,12.0,10.84
+I,7.0,4.82
+I,5.0,5.68
+II,10.0,9.14
+II,8.0,8.14
+II,13.0,8.74
+II,9.0,8.77
+II,11.0,9.26
+II,14.0,8.1
+II,6.0,6.13
+II,4.0,3.1
+II,12.0,9.13
+II,7.0,7.26
+II,5.0,4.74
+III,10.0,7.46
+III,8.0,6.77
+III,13.0,12.74
+III,9.0,7.11
+III,11.0,7.81
+III,14.0,8.84
+III,6.0,6.08
+III,4.0,5.39
+III,12.0,8.15
+III,7.0,6.42
+III,5.0,5.73
+IV,8.0,6.58
+IV,8.0,5.76
+IV,8.0,7.71
+IV,8.0,8.84
+IV,8.0,8.47
+IV,8.0,7.04
+IV,8.0,5.25
+IV,19.0,12.5
+IV,8.0,5.56
+IV,8.0,7.91
+IV,8.0,6.89
+</code></pre>
+:ET

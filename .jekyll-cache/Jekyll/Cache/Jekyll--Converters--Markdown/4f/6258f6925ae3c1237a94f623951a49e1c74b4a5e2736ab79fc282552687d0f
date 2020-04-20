@@ -1,0 +1,608 @@
+I"??<h2 id="实验简介">实验简介</h2>
+
+<ul>
+  <li>从 WMT18（News Commentary）中抽取的中英句子对
+    <ul>
+      <li>数据集规模：10000
+        <ul>
+          <li>10K 版本，train: 8000, test: 2000, dev: 2000</li>
+          <li>100K 版本（非必须），train: 80000, test: 20000, dev: 20000</li>
+          <li>可根据提供的数据处理脚本自定义数据集大小（不能太小）</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li>数据格式
+    <ul>
+      <li>source: 每行一条中文句子</li>
+      <li>target: 每行一条 source 中对应行数的英文句子</li>
+    </ul>
+  </li>
+  <li>平台：Pytorch</li>
+  <li>模型要求：
+    <ul>
+      <li>两个 LSTM 分别作为 Encoder 和 Decoder</li>
+      <li>实现基于注意力机制的机器翻译</li>
+      <li>自行选择分词工具</li>
+      <li>改变 teacher forcing ratio，观察效果</li>
+      <li>Beam Search 策略</li>
+    </ul>
+  </li>
+  <li>评估指标：BLEU 值（BLEU-4）</li>
+  <li>词向量：随机初始化或自选预训练词向量</li>
+  <li>设备：CPU/GPU</li>
+  <li>要求：
+    <ul>
+      <li>描述清楚核心代码逻辑和 tensor 维度</li>
+      <li>描述清楚代码的运行环境和软件版本</li>
+      <li>独立完成，不得抄袭！不得抄袭！不得抄袭！</li>
+    </ul>
+  </li>
+</ul>
+
+<h2 id="reference">Reference</h2>
+
+<h3 id="参考资料">参考资料</h3>
+
+<ul>
+  <li><a href="https://baike.baidu.com/item/Tensorflow%EF%BC%9A%E5%AE%9E%E6%88%98Google%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E6%A1%86%E6%9E%B6">Tensorflow：实战 Google 深度学习框架</a>, 才云科技 Caicloud,郑泽宇,顾思宇</li>
+  <li><a href="https://www.h3399.cn/201802/544465.html">浅谈用 Python 计算文本 BLEU 分数</a></li>
+  <li><a href="https://tensorflow.google.cn/tutorials/text/nmt_with_attention">基于注意力的神经机器翻译</a></li>
+  <li><a href="https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html">NLP FROM SCRATCH: TRANSLATION WITH A SEQUENCE TO SEQUENCE NETWORK AND ATTENTION</a></li>
+</ul>
+
+<h3 id="相关论文">相关论文</h3>
+
+<ul>
+  <li>Effective Approaches to Attention-based Neural Machine Translation, Luong et al., EMNLP 2015</li>
+  <li>Neural Machine Translation by Jointly Learning to Align and Translate, Bahdanau et al., ICLR 2015</li>
+  <li>Bleu: a Method for Automatic Evaluation for Machine Translation, Papineni et al., ACL 2002</li>
+</ul>
+
+<h2 id="实验环境">实验环境</h2>
+
+<h3 id="本地环境">本地环境</h3>
+
+<p>所用机器型号为 VAIO Z Flip 2016。</p>
+
+<ul>
+  <li>Intel(R) Core(TM) i7-6567U CPU @3.30GHZ 3.31GHz</li>
+  <li>8.00GB RAM</li>
+  <li>Windows 10, 64-bit (Build 17763) 10.0.17763</li>
+  <li>Visual Studio Code 1.39.2
+    <ul>
+      <li>Python 2019.10.41019：九月底发布的 VSCode Python 插件支持在编辑器窗口内原生运行 juyter nootbook 了，非常赞！</li>
+      <li>Remote - WSL 0.39.9：配合 WSL，在 Windows 上获得 Linux 接近原生环境的体验。</li>
+    </ul>
+  </li>
+  <li>Windows Subsystem for Linux [Ubuntu 18.04.2 LTS]：WSL 是以软件的形式运行在 Windows 下的 Linux 子系统，是近些年微软推出来的新工具，可以在 Windows 系统上原生运行 Linux。
+    <ul>
+      <li>Python 3.7.4 64-bit (‘anaconda3’:virtualenv)：安装在 WSL 中。
+        <ul>
+          <li>jieba==0.39</li>
+          <li>nltk==3.3</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<h3 id="集群环境">集群环境</h3>
+
+<p>借用 V100 集群中的一个节点，硬件参数和软件配置如下。属于相当豪华的配置了，和上次实验相比这次不到一个小时就跑完了，有钱真好…</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ NodeName</span><span class="o">=</span>gpu27 <span class="nv">Arch</span><span class="o">=</span>x86_64 <span class="nv">CoresPerSocket</span><span class="o">=</span>14
+   <span class="nv">CPUAlloc</span><span class="o">=</span>28 <span class="nv">CPUTot</span><span class="o">=</span>28 <span class="nv">CPULoad</span><span class="o">=</span>4.05
+   <span class="nv">AvailableFeatures</span><span class="o">=(</span>null<span class="o">)</span>
+   <span class="nv">ActiveFeatures</span><span class="o">=(</span>null<span class="o">)</span>
+   <span class="nv">Gres</span><span class="o">=(</span>null<span class="o">)</span>
+   <span class="nv">NodeAddr</span><span class="o">=</span>gpu27 <span class="nv">NodeHostName</span><span class="o">=</span>gpu27
+   <span class="nv">OS</span><span class="o">=</span>Linux 3.10.0-957.el7.x86_64 <span class="c">#1 SMP Sat Oct 12 02:01:43 CST 2019</span>
+   <span class="nv">RealMemory</span><span class="o">=</span>256000 <span class="nv">AllocMem</span><span class="o">=</span>0 <span class="nv">FreeMem</span><span class="o">=</span>219734 <span class="nv">Sockets</span><span class="o">=</span>2 <span class="nv">Boards</span><span class="o">=</span>1
+   <span class="nv">State</span><span class="o">=</span>ALLOCATED <span class="nv">ThreadsPerCore</span><span class="o">=</span>1 <span class="nv">TmpDisk</span><span class="o">=</span>0 <span class="nv">Weight</span><span class="o">=</span>0 <span class="nv">Owner</span><span class="o">=</span>N/A <span class="nv">MCS_label</span><span class="o">=</span>N/A
+   <span class="nv">Partitions</span><span class="o">=</span>gpu_v100
+   <span class="nv">BootTime</span><span class="o">=</span>2020-01-10T15:25:50 <span class="nv">SlurmdStartTime</span><span class="o">=</span>2020-01-10T15:32:49
+   <span class="nv">CfgTRES</span><span class="o">=</span><span class="nv">cpu</span><span class="o">=</span>28,mem<span class="o">=</span>250G,billing<span class="o">=</span>28
+   <span class="nv">AllocTRES</span><span class="o">=</span><span class="nv">cpu</span><span class="o">=</span>28,mem<span class="o">=</span>250G,billing<span class="o">=</span>28
+   <span class="nv">CapWatts</span><span class="o">=</span>n/a
+   <span class="nv">CurrentWatts</span><span class="o">=</span>0 <span class="nv">AveWatts</span><span class="o">=</span>0
+   <span class="nv">ExtSensorsJoules</span><span class="o">=</span>n/s <span class="nv">ExtSensorsWatts</span><span class="o">=</span>0 <span class="nv">ExtSensorsTemp</span><span class="o">=</span>n/s
+<span class="nv">$ </span>module list
+Currently Loaded Modulefiles:
+ 1<span class="o">)</span> CUDA/10.0              3<span class="o">)</span> TensorFlow/1.13.2-gpu-py3.6-cuda10
+ 2<span class="o">)</span> cudnn/7.4.1-CUDA10.0
+<span class="nv">$ </span>nvidia-smi
+Tue Jan 14 08:25:27 2020
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 418.67       Driver Version: 418.67       CUDA Version: 10.1     |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|<span class="o">===============================</span>+<span class="o">======================</span>+<span class="o">======================</span>|
+|   0  Tesla V100-SXM2...  Off  | 00000000:8A:00.0 Off |                    0 |
+| N/A   30C    P0    37W / 300W |      0MiB / 16130MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+|   1  Tesla V100-SXM2...  Off  | 00000000:8B:00.0 Off |                    0 |
+| N/A   27C    P0    37W / 300W |      0MiB / 16130MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+|   2  Tesla V100-SXM2...  Off  | 00000000:B3:00.0 Off |                    0 |
+| N/A   28C    P0    37W / 300W |      0MiB / 16130MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+|   3  Tesla V100-SXM2...  Off  | 00000000:B4:00.0 Off |                    0 |
+| N/A   29C    P0    37W / 300W |      0MiB / 16130MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+
++-----------------------------------------------------------------------------+
+| Processes:                                                       GPU Memory |
+|  GPU       PID   Type   Process name                             Usage      |
+|<span class="o">=============================================================================</span>|
+|  No running processes found                                                 |
++-----------------------------------------------------------------------------+
+</code></pre></div></div>
+
+<h2 id="实验过程">实验过程</h2>
+
+<p>由于集群并没有连外网，数据清洗、分词时需要安装一些依赖和包的，因此都在本地完成了，而核心的深度学习过程是在集群上进行。</p>
+
+<h3 id="预处理preprocesspy">预处理<code class="highlighter-rouge">preprocess.py</code></h3>
+
+<p>使用<code class="highlighter-rouge">jieba</code>对中文文本进行分词，并做了数据清洗工作：使用英文标点替代中文标点；并洗掉了原来数据中的一些乱码。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">getCMN</span><span class="p">(</span><span class="n">cmn</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">jieba</span>
+    <span class="n">cmn_lines</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">cmn</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">cmn_lines</span><span class="p">)):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s">' '</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">jieba</span><span class="p">.</span><span class="n">cut</span><span class="p">(</span><span class="n">cmn_lines</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">cut_all</span><span class="o">=</span><span class="bp">False</span><span class="p">))</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">re</span><span class="p">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r"&amp;#[0-9]+;"</span><span class="p">,</span> <span class="s">r""</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">re</span><span class="p">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r"�"</span><span class="p">,</span> <span class="s">r""</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">zh</span><span class="p">,</span> <span class="n">en</span> <span class="ow">in</span> <span class="p">[(</span><span class="s">"。"</span><span class="p">,</span> <span class="s">"."</span><span class="p">),</span> <span class="p">(</span><span class="s">"！"</span><span class="p">,</span> <span class="s">"!"</span><span class="p">),</span> <span class="p">(</span><span class="s">"？"</span><span class="p">,</span> <span class="s">"?"</span><span class="p">),</span> <span class="p">(</span><span class="s">"，"</span><span class="p">,</span> <span class="s">","</span><span class="p">)]:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">replace</span><span class="p">(</span><span class="n">zh</span><span class="p">,</span> <span class="n">en</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">re</span><span class="p">.</span><span class="n">sub</span><span class="p">(</span><span class="s">u"[^a-zA-Z0-9</span><span class="si">\</span><span class="se">u4e00</span><span class="s">-</span><span class="si">\</span><span class="se">u9fa5</span><span class="s">,.!?]"</span><span class="p">,</span> <span class="s">u" "</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">re</span><span class="p">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r"\</span><span class="err">s+</span><span class="s">", r"</span> <span class="s">", s)
+        cmn_lines[i] = s.lower().strip().split()
+    return cmn_lines
+</span></code></pre></div></div>
+
+<p>英文部分的处理更加简单，这里不直接放出了。</p>
+
+<p>下面是根据上一步分词的结果建立词典的过程。由于在数据集中数据显然不会是均匀分布的，常用词汇的频率明显会高于冷门词汇，因此我按照出现的频数从大到小排序并删去了频数最小的那部分词。这样做的道理是，冷门词汇很少会出现在翻译结果中，如果保留下来的话会增大词向量但并不能给最终的结果带来多少好的改进，反而会大大减慢我们学习的效率。</p>
+
+<p>此外，我添加了三个标记词：</p>
+
+<ul>
+  <li><code class="highlighter-rouge">&lt;unk&gt;</code>：代表未出现或难匹配，索引 0</li>
+  <li><code class="highlighter-rouge">&lt;sos&gt;</code>：代表句子开头，索引 1</li>
+  <li><code class="highlighter-rouge">&lt;eos&gt;</code>：代表句子结尾，索引 2</li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">build_vocab</span><span class="p">(</span><span class="n">lang</span><span class="p">,</span> <span class="n">vocab</span><span class="p">,</span> <span class="n">vocab_size</span><span class="p">):</span>
+    <span class="n">counter</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lang</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">word</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">counter</span><span class="p">:</span>
+                <span class="n">counter</span><span class="p">[</span><span class="n">word</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">counter</span><span class="p">[</span><span class="n">word</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">id_to_word</span> <span class="o">=</span> <span class="p">[</span><span class="s">"&lt;unk&gt;"</span><span class="p">,</span> <span class="s">"&lt;sos&gt;"</span><span class="p">,</span> <span class="s">"&lt;eos&gt;"</span><span class="p">]</span><span class="o">+</span><span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                                              <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">counter</span><span class="p">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="bp">True</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">id_to_word</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">vocab_size</span><span class="p">:</span>
+        <span class="n">id_to_word</span> <span class="o">=</span> <span class="n">id_to_word</span><span class="p">[:</span><span class="n">vocab_size</span><span class="p">]</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">vocab</span><span class="p">,</span> <span class="s">'w'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">id_to_word</span><span class="p">:</span>
+            <span class="n">f</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">word</span> <span class="o">+</span> <span class="s">'</span><span class="si">\</span><span class="se">n</span><span class="s">'</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>最后是根据词典重新给数据集标号，同时为原来的数据集加上句尾标记<code class="highlighter-rouge">&lt;eos&gt;</code>。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">build_data</span><span class="p">(</span><span class="n">lang</span><span class="p">,</span> <span class="n">vocab</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+    <span class="n">id_to_word</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">vocab</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="n">word_to_id</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">id_to_word</span><span class="p">)):</span>
+        <span class="n">word_to_id</span><span class="p">[</span><span class="n">id_to_word</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">strip</span><span class="p">()]</span> <span class="o">=</span> <span class="n">i</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s">'w'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">fd</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lang</span><span class="p">:</span>
+            <span class="n">fd</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="s">' '</span><span class="p">.</span><span class="n">join</span><span class="p">(</span>
+                <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">word_to_id</span><span class="p">[</span><span class="n">w</span> <span class="k">if</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">word_to_id</span> <span class="k">else</span> <span class="s">'&lt;unk&gt;'</span><span class="p">])</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">line</span><span class="o">+</span><span class="p">[</span><span class="s">'&lt;eos&gt;'</span><span class="p">]])</span> <span class="o">+</span> <span class="s">'</span><span class="si">\</span><span class="se">n</span><span class="s">'</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h3 id="训练模型trainpy">训练模型<code class="highlighter-rouge">train.py</code></h3>
+
+<p>此处我参考了《Tensorflow：实战 Google 深度学习框架》这本书中的教学代码，它的好处是内容深入浅出，并有比较细致的代码注释。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 定义NMTModel类来描述模型。</span>
+class NMTModel<span class="o">(</span>object<span class="o">)</span>:
+    <span class="c"># 在模型的初始化函数中定义模型要用到的变量。</span>
+    def __init__<span class="o">(</span>self<span class="o">)</span>:
+        <span class="c"># 定义编码器和解码器所使用的LSTM结构。</span>
+        self.enc_cell_fw <span class="o">=</span> tf.nn.rnn_cell.BasicLSTMCell<span class="o">(</span>HIDDEN_SIZE<span class="o">)</span>
+        self.enc_cell_bw <span class="o">=</span> tf.nn.rnn_cell.BasicLSTMCell<span class="o">(</span>HIDDEN_SIZE<span class="o">)</span>
+        self.dec_cell <span class="o">=</span> tf.nn.rnn_cell.MultiRNNCell<span class="o">(</span>
+          <span class="o">[</span>tf.nn.rnn_cell.BasicLSTMCell<span class="o">(</span>HIDDEN_SIZE<span class="o">)</span>
+           <span class="k">for </span>_ <span class="k">in </span>range<span class="o">(</span>DECODER_LAYERS<span class="o">)])</span>
+
+        <span class="c"># 为源语言和目标语言分别定义词向量。</span>
+        self.src_embedding <span class="o">=</span> tf.get_variable<span class="o">(</span>
+            <span class="s2">"src_emb"</span>, <span class="o">[</span>SRC_VOCAB_SIZE, HIDDEN_SIZE]<span class="o">)</span>
+        self.trg_embedding <span class="o">=</span> tf.get_variable<span class="o">(</span>
+            <span class="s2">"trg_emb"</span>, <span class="o">[</span>TRG_VOCAB_SIZE, HIDDEN_SIZE]<span class="o">)</span>
+
+        <span class="c"># 定义softmax层的变量</span>
+        <span class="k">if </span>SHARE_EMB_AND_SOFTMAX:
+           self.softmax_weight <span class="o">=</span> tf.transpose<span class="o">(</span>self.trg_embedding<span class="o">)</span>
+        <span class="k">else</span>:
+           self.softmax_weight <span class="o">=</span> tf.get_variable<span class="o">(</span>
+               <span class="s2">"weight"</span>, <span class="o">[</span>HIDDEN_SIZE, TRG_VOCAB_SIZE]<span class="o">)</span>
+        self.softmax_bias <span class="o">=</span> tf.get_variable<span class="o">(</span>
+            <span class="s2">"softmax_bias"</span>, <span class="o">[</span>TRG_VOCAB_SIZE]<span class="o">)</span>
+
+    <span class="c"># 在forward函数中定义模型的前向计算图。</span>
+    <span class="c"># src_input, src_size, trg_input, trg_label, trg_size分别是上面</span>
+    <span class="c"># MakeSrcTrgDataset函数产生的五种张量。</span>
+    def forward<span class="o">(</span>self, src_input, src_size, trg_input, trg_label, trg_size<span class="o">)</span>:
+        batch_size <span class="o">=</span> tf.shape<span class="o">(</span>src_input<span class="o">)[</span>0]
+
+        <span class="c"># 将输入和输出单词编号转为词向量。</span>
+        src_emb <span class="o">=</span> tf.nn.embedding_lookup<span class="o">(</span>self.src_embedding, src_input<span class="o">)</span>
+        trg_emb <span class="o">=</span> tf.nn.embedding_lookup<span class="o">(</span>self.trg_embedding, trg_input<span class="o">)</span>
+
+        <span class="c"># 在词向量上进行dropout。</span>
+        src_emb <span class="o">=</span> tf.nn.dropout<span class="o">(</span>src_emb, KEEP_PROB<span class="o">)</span>
+        trg_emb <span class="o">=</span> tf.nn.dropout<span class="o">(</span>trg_emb, KEEP_PROB<span class="o">)</span>
+
+        <span class="c"># 使用dynamic_rnn构造编码器。</span>
+        <span class="c"># 编码器读取源句子每个位置的词向量，输出最后一步的隐藏状态enc_state。</span>
+        <span class="c"># 因为编码器是一个双层LSTM，因此enc_state是一个包含两个LSTMStateTuple类</span>
+        <span class="c"># 张量的tuple，每个LSTMStateTuple对应编码器中的一层。</span>
+        <span class="c"># 张量的维度是 [batch_size, HIDDEN_SIZE]。</span>
+        <span class="c"># enc_outputs是顶层LSTM在每一步的输出，它的维度是[batch_size,</span>
+        <span class="c"># max_time, HIDDEN_SIZE]。Seq2Seq模型中不需要用到enc_outputs，而</span>
+        <span class="c"># 后面介绍的attention模型会用到它。</span>
+        <span class="c"># 下面的代码取代了Seq2Seq样例代码中forward函数里的相应部分。</span>
+        with tf.variable_scope<span class="o">(</span><span class="s2">"encoder"</span><span class="o">)</span>:
+            <span class="c"># 构造编码器时，使用bidirectional_dynamic_rnn构造双向循环网络。</span>
+            <span class="c"># 双向循环网络的顶层输出enc_outputs是一个包含两个张量的tuple，每个张量的</span>
+            <span class="c"># 维度都是[batch_size, max_time, HIDDEN_SIZE]，代表两个LSTM在每一步的输出。</span>
+            enc_outputs, enc_state <span class="o">=</span> tf.nn.bidirectional_dynamic_rnn<span class="o">(</span>
+                self.enc_cell_fw, self.enc_cell_bw, src_emb, src_size,
+                <span class="nv">dtype</span><span class="o">=</span>tf.float32<span class="o">)</span>
+            <span class="c"># 将两个LSTM的输出拼接为一个张量。</span>
+            enc_outputs <span class="o">=</span> tf.concat<span class="o">([</span>enc_outputs[0], enc_outputs[1]], <span class="nt">-1</span><span class="o">)</span>
+
+        with tf.variable_scope<span class="o">(</span><span class="s2">"decoder"</span><span class="o">)</span>:
+            <span class="c"># 选择注意力权重的计算模型。BahdanauAttention是使用一个隐藏层的前馈神经网络。</span>
+            <span class="c"># memory_sequence_length是一个维度为[batch_size]的张量，代表batch</span>
+            <span class="c"># 中每个句子的长度，Attention需要根据这个信息把填充位置的注意力权重设置为0。</span>
+            attention_mechanism <span class="o">=</span> tf.contrib.seq2seq.BahdanauAttention<span class="o">(</span>
+                HIDDEN_SIZE, enc_outputs,
+                <span class="nv">memory_sequence_length</span><span class="o">=</span>src_size<span class="o">)</span>
+
+            <span class="c"># 将解码器的循环神经网络self.dec_cell和注意力一起封装成更高层的循环神经网络。</span>
+            attention_cell <span class="o">=</span> tf.contrib.seq2seq.AttentionWrapper<span class="o">(</span>
+                self.dec_cell, attention_mechanism,
+                <span class="nv">attention_layer_size</span><span class="o">=</span>HIDDEN_SIZE<span class="o">)</span>
+
+            <span class="c"># 使用attention_cell和dynamic_rnn构造编码器。</span>
+            <span class="c"># 这里没有指定init_state，也就是没有使用编码器的输出来初始化输入，而完全依赖</span>
+            <span class="c"># 注意力作为信息来源。</span>
+            dec_outputs, _ <span class="o">=</span> tf.nn.dynamic_rnn<span class="o">(</span>
+                attention_cell, trg_emb, trg_size, <span class="nv">dtype</span><span class="o">=</span>tf.float32<span class="o">)</span>
+
+        <span class="c"># 计算解码器每一步的log perplexity。这一步与语言模型代码相同。</span>
+        output <span class="o">=</span> tf.reshape<span class="o">(</span>dec_outputs, <span class="o">[</span><span class="nt">-1</span>, HIDDEN_SIZE]<span class="o">)</span>
+        logits <span class="o">=</span> tf.matmul<span class="o">(</span>output, self.softmax_weight<span class="o">)</span> + self.softmax_bias
+        loss <span class="o">=</span> tf.nn.sparse_softmax_cross_entropy_with_logits<span class="o">(</span>
+            <span class="nv">labels</span><span class="o">=</span>tf.reshape<span class="o">(</span>trg_label, <span class="o">[</span><span class="nt">-1</span><span class="o">])</span>, <span class="nv">logits</span><span class="o">=</span>logits<span class="o">)</span>
+
+        <span class="c"># 在计算平均损失时，需要将填充位置的权重设置为0，以避免无效位置的预测干扰</span>
+        <span class="c"># 模型的训练。</span>
+        label_weights <span class="o">=</span> tf.sequence_mask<span class="o">(</span>
+            trg_size, <span class="nv">maxlen</span><span class="o">=</span>tf.shape<span class="o">(</span>trg_label<span class="o">)[</span>1], <span class="nv">dtype</span><span class="o">=</span>tf.float32<span class="o">)</span>
+        label_weights <span class="o">=</span> tf.reshape<span class="o">(</span>label_weights, <span class="o">[</span><span class="nt">-1</span><span class="o">])</span>
+        cost <span class="o">=</span> tf.reduce_sum<span class="o">(</span>loss <span class="k">*</span> label_weights<span class="o">)</span>
+        cost_per_token <span class="o">=</span> cost / tf.reduce_sum<span class="o">(</span>label_weights<span class="o">)</span>
+
+        <span class="c"># 定义反向传播操作。反向操作的实现与语言模型代码相同。</span>
+        trainable_variables <span class="o">=</span> tf.trainable_variables<span class="o">()</span>
+
+        <span class="c"># 控制梯度大小，定义优化方法和训练步骤。</span>
+        grads <span class="o">=</span> tf.gradients<span class="o">(</span>cost / tf.to_float<span class="o">(</span>batch_size<span class="o">)</span>,
+                             trainable_variables<span class="o">)</span>
+        grads, _ <span class="o">=</span> tf.clip_by_global_norm<span class="o">(</span>grads, MAX_GRAD_NORM<span class="o">)</span>
+        optimizer <span class="o">=</span> tf.train.GradientDescentOptimizer<span class="o">(</span><span class="nv">learning_rate</span><span class="o">=</span>1.0<span class="o">)</span>
+        train_op <span class="o">=</span> optimizer.apply_gradients<span class="o">(</span>
+            zip<span class="o">(</span>grads, trainable_variables<span class="o">))</span>
+        <span class="k">return </span>cost_per_token, train_op
+</code></pre></div></div>
+
+<p>这里词向量我是使用随机初始化的。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">initializer</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">random_uniform_initializer</span><span class="p">(</span><span class="o">-</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h3 id="模型预测testpy">模型预测<code class="highlighter-rouge">test.py</code></h3>
+
+<p>可以加载上一步中训练的模型对<strong>单个句子</strong>进行预测。注意这里我没有读取字典，而让预测的结果仍然是在词典中的索引。主要是因为集群上的环境还是很不稳定，使用<code class="highlighter-rouge">utf-8</code>编码的时候老是出现这样那样的报错；而在集群上调试还是不如本地折腾来得痛快。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># -*- coding: utf-8 -*-
+# To add a new cell, type '# %%'
+# To add a new markdown cell, type '# %% [markdown]'
+# %%
+</span><span class="kn">import</span> <span class="nn">tensorflow</span> <span class="k">as</span> <span class="n">tf</span>
+<span class="kn">import</span> <span class="nn">codecs</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c1"># 读取checkpoint的路径。7600表示是训练程序在第7600步保存的checkpoint。
+</span><span class="n">CHECKPOINT_PATH</span> <span class="o">+=</span> <span class="s">"-7600"</span>
+
+<span class="c1"># %% [markdown]
+# #### 2.定义NMT模型和解码步骤。
+</span>
+<span class="c1"># %%
+# 定义NMTModel类来描述模型。
+</span>
+
+<span class="k">class</span> <span class="nc">NMTModel</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="c1"># 在模型的初始化函数中定义模型要用到的变量。
+</span>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># 定义编码器和解码器所使用的LSTM结构。
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">enc_cell_fw</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">rnn_cell</span><span class="p">.</span><span class="n">BasicLSTMCell</span><span class="p">(</span><span class="n">HIDDEN_SIZE</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">enc_cell_bw</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">rnn_cell</span><span class="p">.</span><span class="n">BasicLSTMCell</span><span class="p">(</span><span class="n">HIDDEN_SIZE</span><span class="p">)</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">dec_cell</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">rnn_cell</span><span class="p">.</span><span class="n">MultiRNNCell</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">tf</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">rnn_cell</span><span class="p">.</span><span class="n">BasicLSTMCell</span><span class="p">(</span><span class="n">HIDDEN_SIZE</span><span class="p">)</span>
+             <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">DECODER_LAYERS</span><span class="p">)])</span>
+
+        <span class="c1"># 为源语言和目标语言分别定义词向量。
+</span>        <span class="bp">self</span><span class="p">.</span><span class="n">src_embedding</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span>
+            <span class="s">"src_emb"</span><span class="p">,</span> <span class="p">[</span><span class="n">SRC_VOCAB_SIZE</span><span class="p">,</span> <span class="n">HIDDEN_SIZE</span><span class="p">])</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">trg_embedding</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span>
+            <span class="s">"trg_emb"</span><span class="p">,</span> <span class="p">[</span><span class="n">TRG_VOCAB_SIZE</span><span class="p">,</span> <span class="n">HIDDEN_SIZE</span><span class="p">])</span>
+
+        <span class="c1"># 定义softmax层的变量
+</span>        <span class="k">if</span> <span class="n">SHARE_EMB_AND_SOFTMAX</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">softmax_weight</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">transpose</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">trg_embedding</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">.</span><span class="n">softmax_weight</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span>
+                <span class="s">"weight"</span><span class="p">,</span> <span class="p">[</span><span class="n">HIDDEN_SIZE</span><span class="p">,</span> <span class="n">TRG_VOCAB_SIZE</span><span class="p">])</span>
+        <span class="bp">self</span><span class="p">.</span><span class="n">softmax_bias</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">get_variable</span><span class="p">(</span>
+            <span class="s">"softmax_bias"</span><span class="p">,</span> <span class="p">[</span><span class="n">TRG_VOCAB_SIZE</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">inference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">src_input</span><span class="p">):</span>
+        <span class="c1"># 虽然输入只有一个句子，但因为dynamic_rnn要求输入是batch的形式，因此这里
+</span>        <span class="c1"># 将输入句子整理为大小为1的batch。
+</span>        <span class="n">src_size</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">convert_to_tensor</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">src_input</span><span class="p">)],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">tf</span><span class="p">.</span><span class="n">int32</span><span class="p">)</span>
+        <span class="n">src_input</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">convert_to_tensor</span><span class="p">([</span><span class="n">src_input</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">tf</span><span class="p">.</span><span class="n">int32</span><span class="p">)</span>
+        <span class="n">src_emb</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">embedding_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">src_embedding</span><span class="p">,</span> <span class="n">src_input</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">tf</span><span class="p">.</span><span class="n">variable_scope</span><span class="p">(</span><span class="s">"encoder"</span><span class="p">):</span>
+            <span class="c1"># 使用bidirectional_dynamic_rnn构造编码器。这一步与训练时相同。
+</span>            <span class="n">enc_outputs</span><span class="p">,</span> <span class="n">enc_state</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">bidirectional_dynamic_rnn</span><span class="p">(</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">enc_cell_fw</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">enc_cell_bw</span><span class="p">,</span> <span class="n">src_emb</span><span class="p">,</span> <span class="n">src_size</span><span class="p">,</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">tf</span><span class="p">.</span><span class="n">float32</span><span class="p">)</span>
+            <span class="c1"># 将两个LSTM的输出拼接为一个张量。
+</span>            <span class="n">enc_outputs</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">concat</span><span class="p">([</span><span class="n">enc_outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">enc_outputs</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">tf</span><span class="p">.</span><span class="n">variable_scope</span><span class="p">(</span><span class="s">"decoder"</span><span class="p">):</span>
+            <span class="c1"># 定义解码器使用的注意力机制。
+</span>            <span class="n">attention_mechanism</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">contrib</span><span class="p">.</span><span class="n">seq2seq</span><span class="p">.</span><span class="n">BahdanauAttention</span><span class="p">(</span>
+                <span class="n">HIDDEN_SIZE</span><span class="p">,</span> <span class="n">enc_outputs</span><span class="p">,</span>
+                <span class="n">memory_sequence_length</span><span class="o">=</span><span class="n">src_size</span><span class="p">)</span>
+
+            <span class="c1"># 将解码器的循环神经网络self.dec_cell和注意力一起封装成更高层的循环神经网络。
+</span>            <span class="n">attention_cell</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">contrib</span><span class="p">.</span><span class="n">seq2seq</span><span class="p">.</span><span class="n">AttentionWrapper</span><span class="p">(</span>
+                <span class="bp">self</span><span class="p">.</span><span class="n">dec_cell</span><span class="p">,</span> <span class="n">attention_mechanism</span><span class="p">,</span>
+                <span class="n">attention_layer_size</span><span class="o">=</span><span class="n">HIDDEN_SIZE</span><span class="p">)</span>
+
+        <span class="c1"># 设置解码的最大步数。这是为了避免在极端情况出现无限循环的问题。
+</span>        <span class="n">MAX_DEC_LEN</span> <span class="o">=</span> <span class="mi">100</span>
+
+        <span class="k">with</span> <span class="n">tf</span><span class="p">.</span><span class="n">variable_scope</span><span class="p">(</span><span class="s">"decoder/rnn/attention_wrapper"</span><span class="p">):</span>
+            <span class="c1"># 使用一个变长的TensorArray来存储生成的句子。
+</span>            <span class="n">init_array</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">TensorArray</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">tf</span><span class="p">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                                        <span class="n">dynamic_size</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">clear_after_read</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+            <span class="c1"># 填入第一个单词&lt;sos&gt;作为解码器的输入。
+</span>            <span class="n">init_array</span> <span class="o">=</span> <span class="n">init_array</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">SOS_ID</span><span class="p">)</span>
+            <span class="c1"># 调用attention_cell.zero_state构建初始的循环状态。循环状态包含
+</span>            <span class="c1"># 循环神经网络的隐藏状态，保存生成句子的TensorArray，以及记录解码
+</span>            <span class="c1"># 步数的一个整数step。
+</span>            <span class="n">init_loop_var</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">attention_cell</span><span class="p">.</span><span class="n">zero_state</span><span class="p">(</span><span class="n">batch_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">tf</span><span class="p">.</span><span class="n">float32</span><span class="p">),</span>
+                <span class="n">init_array</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+            <span class="c1"># tf.while_loop的循环条件：
+</span>            <span class="c1"># 循环直到解码器输出&lt;eos&gt;，或者达到最大步数为止。
+</span>            <span class="k">def</span> <span class="nf">continue_loop_condition</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">trg_ids</span><span class="p">,</span> <span class="n">step</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">tf</span><span class="p">.</span><span class="n">reduce_all</span><span class="p">(</span><span class="n">tf</span><span class="p">.</span><span class="n">logical_and</span><span class="p">(</span>
+                    <span class="n">tf</span><span class="p">.</span><span class="n">not_equal</span><span class="p">(</span><span class="n">trg_ids</span><span class="p">.</span><span class="n">read</span><span class="p">(</span><span class="n">step</span><span class="p">),</span> <span class="n">EOS_ID</span><span class="p">),</span>
+                    <span class="n">tf</span><span class="p">.</span><span class="n">less</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="n">MAX_DEC_LEN</span><span class="o">-</span><span class="mi">1</span><span class="p">)))</span>
+
+            <span class="k">def</span> <span class="nf">loop_body</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">trg_ids</span><span class="p">,</span> <span class="n">step</span><span class="p">):</span>
+                <span class="c1"># 读取最后一步输出的单词，并读取其词向量。
+</span>                <span class="n">trg_input</span> <span class="o">=</span> <span class="p">[</span><span class="n">trg_ids</span><span class="p">.</span><span class="n">read</span><span class="p">(</span><span class="n">step</span><span class="p">)]</span>
+                <span class="n">trg_emb</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">embedding_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">.</span><span class="n">trg_embedding</span><span class="p">,</span>
+                                                 <span class="n">trg_input</span><span class="p">)</span>
+                <span class="c1"># 调用attention_cell向前计算一步。
+</span>                <span class="n">dec_outputs</span><span class="p">,</span> <span class="n">next_state</span> <span class="o">=</span> <span class="n">attention_cell</span><span class="p">.</span><span class="n">call</span><span class="p">(</span>
+                    <span class="n">state</span><span class="o">=</span><span class="n">state</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="n">trg_emb</span><span class="p">)</span>
+                <span class="c1"># 计算每个可能的输出单词对应的logit，并选取logit值最大的单词作为
+</span>                <span class="c1"># 这一步的而输出。
+</span>                <span class="n">output</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">dec_outputs</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">HIDDEN_SIZE</span><span class="p">])</span>
+                <span class="n">logits</span> <span class="o">=</span> <span class="p">(</span><span class="n">tf</span><span class="p">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="bp">self</span><span class="p">.</span><span class="n">softmax_weight</span><span class="p">)</span>
+                          <span class="o">+</span> <span class="bp">self</span><span class="p">.</span><span class="n">softmax_bias</span><span class="p">)</span>
+                <span class="n">next_id</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">logits</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">output_type</span><span class="o">=</span><span class="n">tf</span><span class="p">.</span><span class="n">int32</span><span class="p">)</span>
+                <span class="c1"># 将这一步输出的单词写入循环状态的trg_ids中。
+</span>                <span class="n">trg_ids</span> <span class="o">=</span> <span class="n">trg_ids</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">step</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">next_id</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="k">return</span> <span class="n">next_state</span><span class="p">,</span> <span class="n">trg_ids</span><span class="p">,</span> <span class="n">step</span><span class="o">+</span><span class="mi">1</span>
+
+            <span class="c1"># 执行tf.while_loop，返回最终状态。
+</span>            <span class="n">state</span><span class="p">,</span> <span class="n">trg_ids</span><span class="p">,</span> <span class="n">step</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">while_loop</span><span class="p">(</span>
+                <span class="n">continue_loop_condition</span><span class="p">,</span> <span class="n">loop_body</span><span class="p">,</span> <span class="n">init_loop_var</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">trg_ids</span><span class="p">.</span><span class="n">stack</span><span class="p">()</span>
+
+<span class="c1"># %% [markdown]
+# #### 翻译
+</span>
+<span class="c1"># %%
+</span>
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="k">with</span> <span class="n">codecs</span><span class="p">.</span><span class="nb">open</span><span class="p">(</span><span class="n">OUT_TEST_DATA</span><span class="p">,</span> <span class="s">'a'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">input_id</span> <span class="o">=</span> <span class="n">codecs</span><span class="p">.</span><span class="nb">open</span><span class="p">(</span>
+            <span class="n">SRC_TEST_DATA</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()[</span><span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="p">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+        <span class="n">input_ids</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">input_id</span><span class="p">.</span><span class="n">strip</span><span class="p">().</span><span class="n">split</span><span class="p">()]</span>
+        <span class="c1"># 定义训练用的循环神经网络模型。
+</span>        <span class="k">with</span> <span class="n">tf</span><span class="p">.</span><span class="n">variable_scope</span><span class="p">(</span><span class="s">"nmt_model"</span><span class="p">,</span> <span class="n">reuse</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+            <span class="n">model</span> <span class="o">=</span> <span class="n">NMTModel</span><span class="p">()</span>
+
+        <span class="c1"># 建立解码所需的计算图。
+</span>
+        <span class="n">output_op</span> <span class="o">=</span> <span class="n">model</span><span class="p">.</span><span class="n">inference</span><span class="p">(</span><span class="n">input_ids</span><span class="p">)</span>
+
+        <span class="n">sess</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">Session</span><span class="p">()</span>
+        <span class="n">saver</span> <span class="o">=</span> <span class="n">tf</span><span class="p">.</span><span class="n">train</span><span class="p">.</span><span class="n">Saver</span><span class="p">()</span>
+        <span class="n">saver</span><span class="p">.</span><span class="n">restore</span><span class="p">(</span><span class="n">sess</span><span class="p">,</span> <span class="n">CHECKPOINT_PATH</span><span class="p">)</span>
+
+        <span class="c1"># 读取翻译结果。
+</span>        <span class="n">output_ids</span> <span class="o">=</span> <span class="n">sess</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">output_op</span><span class="p">)</span>
+        <span class="n">sess</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">output_ids</span><span class="p">:</span>
+            <span class="n">f</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">o</span><span class="p">)</span><span class="o">+</span><span class="s">' '</span><span class="p">)</span>
+        <span class="n">f</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="s">'</span><span class="si">\</span><span class="se">n</span><span class="s">'</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</code></pre></div></div>
+
+<h3 id="训练参数configpy">训练参数<code class="highlighter-rouge">config.py</code></h3>
+
+<p>训练模型的超参数如下，对应的数值和注释已经在这个文件里了，只要<code class="highlighter-rouge">from config import *</code>即可包含到每个文件中。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SRC_TRAIN_DATA</span> <span class="o">=</span> <span class="s">"./train.zh"</span>          <span class="c1"># 源语言输入文件。
+</span><span class="n">SRC_TEST_DATA</span> <span class="o">=</span> <span class="s">"./test.zh"</span>          <span class="c1"># 源语言输入文件。
+</span><span class="n">TRG_TRAIN_DATA</span> <span class="o">=</span> <span class="s">"./train.en"</span>          <span class="c1"># 目标语言输入文件。
+</span><span class="n">TRG_TEST_DATA</span> <span class="o">=</span> <span class="s">"./test.en"</span>          <span class="c1"># 源语言输入文件。
+</span><span class="n">OUT_TEST_DATA</span> <span class="o">=</span> <span class="s">"./out.en"</span>
+<span class="n">CHECKPOINT_PATH</span> <span class="o">=</span> <span class="s">"./attention_ckpt"</span>   <span class="c1"># checkpoint保存路径。
+# 词汇表文件
+</span><span class="n">SRC_VOCAB</span> <span class="o">=</span> <span class="s">"./zh.vocab"</span>
+<span class="n">TRG_VOCAB</span> <span class="o">=</span> <span class="s">"./en.vocab"</span>
+
+<span class="c1"># 词汇表中&lt;sos&gt;和&lt;eos&gt;的ID。在解码过程中需要用&lt;sos&gt;作为第一步的输入，并将检查
+# 是否是&lt;eos&gt;，因此需要知道这两个符号的ID。
+</span><span class="n">UNK_ID</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">SOS_ID</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">EOS_ID</span> <span class="o">=</span> <span class="mi">2</span>
+
+<span class="n">HIDDEN_SIZE</span> <span class="o">=</span> <span class="mi">1024</span>                     <span class="c1"># LSTM的隐藏层规模。
+</span><span class="n">DECODER_LAYERS</span> <span class="o">=</span> <span class="mi">2</span>                     <span class="c1"># 解码器中LSTM结构的层数。这个例子中编码器固定使用单层的双向LSTM。
+</span><span class="n">SRC_VOCAB_SIZE</span> <span class="o">=</span> <span class="mi">10000</span>                 <span class="c1"># 源语言词汇表大小。
+</span><span class="n">TRG_VOCAB_SIZE</span> <span class="o">=</span> <span class="mi">4000</span>                 <span class="c1"># 目标语言词汇表大小。
+</span><span class="n">BATCH_SIZE</span> <span class="o">=</span> <span class="mi">100</span>                       <span class="c1"># 训练数据batch的大小。
+</span><span class="n">NUM_EPOCH</span> <span class="o">=</span> <span class="mi">100</span>                        <span class="c1"># 使用训练数据的轮数。
+</span><span class="n">KEEP_PROB</span> <span class="o">=</span> <span class="mf">0.8</span>                        <span class="c1"># 节点不被dropout的概率。
+</span><span class="n">MAX_GRAD_NORM</span> <span class="o">=</span> <span class="mi">5</span>                      <span class="c1"># 用于控制梯度膨胀的梯度大小上限。
+</span><span class="n">SHARE_EMB_AND_SOFTMAX</span> <span class="o">=</span> <span class="bp">True</span>           <span class="c1"># 在Softmax层和词向量层之间共享参数。
+</span>
+<span class="n">MAX_LEN</span> <span class="o">=</span> <span class="mi">50</span>   <span class="c1"># 限定句子的最大单词数量。
+</span></code></pre></div></div>
+
+<h3 id="评估效果gradepy">评估效果<code class="highlighter-rouge">grade.py</code></h3>
+
+<p>最后是本地上对翻译效果的一个评估，这里直接使用了经典自然语言处理库<code class="highlighter-rouge">nltk</code>中的<code class="highlighter-rouge">sentence_bleu</code>进行实现。</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">nltk.translate.bleu_score</span> <span class="kn">import</span> <span class="n">sentence_bleu</span>
+<span class="kn">from</span> <span class="nn">codecs</span> <span class="kn">import</span> <span class="nb">open</span>
+<span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="o">*</span>
+
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+    <span class="n">id_to_src</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">open</span><span class="p">(</span><span class="n">SRC_VOCAB</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()]</span>
+    <span class="n">id_to_trg</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">open</span><span class="p">(</span><span class="n">TRG_VOCAB</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()]</span>
+
+    <span class="n">questions</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">SRC_TEST_DATA</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="n">reference</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">TRG_TEST_DATA</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="n">candidate</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">OUT_TEST_DATA</span><span class="p">,</span> <span class="s">'r'</span><span class="p">,</span> <span class="s">'utf-8'</span><span class="p">).</span><span class="n">readlines</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">questions</span><span class="p">)):</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">'&lt;'</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s">'</span><span class="si">\</span><span class="se">t</span><span class="s">'</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">questions</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">split</span><span class="p">():</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">id_to_src</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">j</span><span class="p">)],</span> <span class="n">end</span><span class="o">=</span><span class="s">' '</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">'</span><span class="si">\</span><span class="se">n</span><span class="s">='</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s">'</span><span class="si">\</span><span class="se">t</span><span class="s">'</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">reference</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">split</span><span class="p">():</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">id_to_trg</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">j</span><span class="p">)],</span> <span class="n">end</span><span class="o">=</span><span class="s">' '</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">'</span><span class="si">\</span><span class="se">n</span><span class="s">&gt;'</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s">'</span><span class="si">\</span><span class="se">t</span><span class="s">'</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">candidate</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">split</span><span class="p">():</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">id_to_trg</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">j</span><span class="p">)],</span> <span class="n">end</span><span class="o">=</span><span class="s">' '</span><span class="p">)</span>
+
+        <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="si">\</span><span class="se">n</span><span class="s">Bleu score = "</span> <span class="o">+</span>
+              <span class="nb">str</span><span class="p">(</span><span class="n">sentence_bleu</span><span class="p">([</span><span class="n">reference</span><span class="p">[</span><span class="n">i</span><span class="p">]],</span> <span class="n">candidate</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span><span class="o">+</span><span class="s">"</span><span class="si">\</span><span class="se">n</span><span class="s">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h2 id="结果分析">结果分析</h2>
+
+<h3 id="损失函数">损失函数</h3>
+
+<p>训练过程中的损失函数变化如下。</p>
+
+<p><img src="data:image/webp;base64,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" alt="Loss" /></p>
+
+<p>可以看到训练前期训练是比较正常的，Loss 很快收敛，但是训练后期 Loss 不再下降，出现了过拟合的趋势。</p>
+
+<h3 id="翻译结果">翻译结果</h3>
+
+<p>选出几条比较有代表性的进行分析。其中<code class="highlighter-rouge">&lt;</code>开头的为源语言句子，<code class="highlighter-rouge">=</code>开头为目标语言句子，<code class="highlighter-rouge">&gt;</code>开头为模型预测结果。</p>
+
+<p>这是预测结果里得分最低的一条，但是这里革命<code class="highlighter-rouge">revolution</code>和<code class="highlighter-rouge">a fresh start</code>其实意思上有那么点接近。主要原因是，评测集中每条源语言句子只提供了一条正确的目标语言句子，实际上一个句子可以有多种翻译方式，这就导致评测出来的 Bleu 值有很大局限性。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;	欧洲 的 容克 革命 &lt;eos&gt;
+<span class="o">=</span>	europe s &lt;unk&gt; revolution &lt;eos&gt;
+<span class="o">&gt;</span>	&lt;sos&gt; a fresh start <span class="k">for </span>europe &lt;eos&gt;
+Bleu score <span class="o">=</span> 3.641778071011159e-78
+</code></pre></div></div>
+
+<p>可以看到下面的的结果和前一个结果非常接近，在机器看来两个句子非常相似，前一个翻译很低分，在这里的评分就比较高了。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;	有关 欧洲 增长 的 议程 &lt;eos&gt;
+<span class="o">=</span>	an agenda <span class="k">for </span>growth <span class="k">in </span>europe &lt;eos&gt;
+<span class="o">&gt;</span>	&lt;sos&gt; a german start <span class="k">for </span>europe &lt;eos&gt;
+Bleu score <span class="o">=</span> 0.3384653583738009
+</code></pre></div></div>
+
+<p>而下面这一条是预测结果中得分最高的一条。由于我在数据清洗的时候将很多出现频度低的词直接标成<code class="highlighter-rouge">&lt;unk&gt;</code>，而在 Bleu 评分的过程中两个<code class="highlighter-rouge">&lt;unk&gt;</code>匹配也会被计分，因此它的评分有些虚高，参考价值不大。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;	就 像 许多 世纪 以前 &lt;unk&gt; &lt;unk&gt; &lt;unk&gt; 被 人 在 &lt;unk&gt; 教堂 里 杀害 一样 , 是因为 &lt;unk&gt; 相信 这 将 会 &lt;unk&gt; 国王 <span class="nb">.</span> &lt;eos&gt;
+<span class="o">=</span>	like the murder of &lt;unk&gt; &lt;unk&gt; &lt;unk&gt; <span class="k">in </span>his &lt;unk&gt; &lt;unk&gt; many centuries ago , the crime was committed <span class="k">in </span>the clear belief that it would &lt;unk&gt; the &lt;unk&gt; <span class="nb">.</span> &lt;eos&gt;
+<span class="o">&gt;</span>	&lt;sos&gt; like the &lt;unk&gt; , even the &lt;unk&gt; treaty believes that so many &lt;unk&gt; <span class="k">in </span>the &lt;unk&gt; they have , the state would want to negotiate the &lt;unk&gt; <span class="nb">.</span> &lt;eos&gt;
+Bleu score <span class="o">=</span> 0.47808191993705373
+</code></pre></div></div>
+
+<p>下面一句也取得了较高的 Bleu 评分，可以看到其实机器翻译模型将前一句的时间信息已经提取的比较准确了。这很大原因是国际政治新闻中的时间描述比较多，具体到具体的事件之后辨识度就没有那么高了，因此后面开始乱翻译了。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;	自从 2001 年 9 月 11 日 以后 , 美国 就 一直 在 针对 穆斯林 社会 的 &lt;unk&gt; 进行 一场 &lt;unk&gt; 运动 <span class="nb">.</span> &lt;eos&gt;
+<span class="o">=</span>	ever since september 11 , 2001 , the united states has been &lt;unk&gt; <span class="k">in </span>a &lt;unk&gt; against the forces of evil <span class="k">in </span>the muslim world <span class="nb">.</span> &lt;eos&gt;
+<span class="o">&gt;</span>	&lt;sos&gt; since the events that has been overcome since september , the world has weakened consequences been entirely at the &lt;unk&gt; and weakened events <span class="k">in </span>order <span class="nb">.</span> &lt;eos&gt;
+Bleu score <span class="o">=</span> 0.39792915797480105
+</code></pre></div></div>
+
+<p>这一条是我翻译结果里面我觉得最有意思的，结合最近的国际局势真的非常有灵性…</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;	伊朗 是 矛盾 之地 <span class="nb">.</span> &lt;eos&gt;
+<span class="o">=</span>	iran is a land of &lt;unk&gt; <span class="nb">.</span> &lt;eos&gt;
+<span class="o">&gt;</span>	&lt;sos&gt; iran won t stop <span class="nb">.</span> &lt;eos&gt;
+Bleu score <span class="o">=</span> 0.31068218135768266
+</code></pre></div></div>
+
+<p>对测试集的结果做 Bleu 评分后的分布大致如下。</p>
+
+<p><img src="data:image/webp;base64,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" alt="Bleu" /></p>
+
+<h3 id="beam-search-策略">Beam Search 策略</h3>
+
+<p>经过测试和比较，集束搜索策略对我的结果几乎没有改进，大部分搜索的结果都和之前的接近，这意味着大部分情况下机器翻译的模型都能找到概率值最大的路径。同时，集束搜索的时空成本都大大增加了，有点得不偿失。</p>
+
+<h2 id="总结与思考遇到的困难及采用的解决方法后续改进方向等">总结与思考（遇到的困难及采用的解决方法、后续改进方向等）</h2>
+
+<p>本学期的自然然语言处理课程终于结束，通过三次实验我体验了自然语言处理从数据挖掘、数据清洗再到模型搭建学习的完整过程。和本学期一些其他与人工智能相关的课程相比，这门课的机器学习的训练集合和训练时间都是最长的。好在使用用集群进行计算之后训练的速度确实大大加快，也能够塞更多的训练数据。听说大公司训练出的成熟对话模型的基本上都用了上 GB 级别的语料集合进行训练，那么看来做自然语言处理确实很吃计算资源。此外，在搭建模型的时候，要让写出来的模型能够运行，从数据爬取和清洗的过程就要很下一番功夫。然后，经过漫长时间的忙碌搭的模型终于跑出结果了，结果全是<code class="highlighter-rouge">and</code>、<code class="highlighter-rouge">the</code>一类的词，让人根本分不清到底是自己在实验的哪个过程出了问题，还是单纯的模型没有收敛完全，非常玄学和让人抓狂。调包调参上手很快，但是真正学好这门课，也完全不是一件容易的事。</p>
+
+<p>记得自然语言处理的第一堂课上，老师说的这样一句话让人印象深刻：<strong>自然语言理解是人工智能皇冠上的明珠</strong>。和人工智能的另一大热门领域，计算机视觉比起来，自然语言处理这门学科的发展还处在发展更早期的阶段。虽然深度学习的热潮给自然语言处理领域带来了成果，但从理论方法的角度看，由于采集、整理、表示和有效应用大量知识的困难，这些系统更依赖于统计学的方法和其他“简单”的方法或技巧，而这些统计学的方法和其他“简单”的方法似乎也快达到它们的极限了。我非常期待这门学科在接下来的一段时期能够取得新理论的突破和机遇，为我们的生活提供更多的方便。</p>
+:ET

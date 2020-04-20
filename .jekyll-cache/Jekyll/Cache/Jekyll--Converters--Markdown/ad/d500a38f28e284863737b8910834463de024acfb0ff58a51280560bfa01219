@@ -1,0 +1,356 @@
+I"'�<h2 id="项目概况">项目概况</h2>
+
+<p>项目名称：某科学的超会议议程管理系统（Scientific Meeting Management System）
+项目介绍：基于命令行，实现添加(add)、删除(delete)、修改(modify)、查询(query)等议程管理功能。</p>
+
+<h2 id="需求分析">需求分析</h2>
+
+<ul>
+  <li>每次打开系统时，自动恢复上次的数据。</li>
+  <li>每次关闭系统时，将数据保存到本地。</li>
+  <li>向议程中加入一个会议，当会议与任何已有的议程都不冲突时成功加入议程，否则报错。</li>
+  <li>查询\修改\删除：根据关键字查询\修改\删除相关议程。</li>
+  <li>清空功能：将议程清空，以便重新读入。</li>
+</ul>
+
+<h2 id="实现思路">实现思路</h2>
+
+<h3 id="交互示意图">交互示意图</h3>
+
+<p>以下示意图中以<strong>SMMS</strong>（Scientific Meeting Management System）代表本系统，<strong>LOG</strong>代表本地缓存文件<code class="highlighter-rouge">log.txt</code>，<strong>STACK</strong>代表用于议程管理的栈结构（见后）。</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+USER-&gt;&gt;SMMS:输入
+LOG-&gt;&gt;SMMS:读档
+SMMS-&gt;&gt;STACK:关键字搜索、操作
+SMMS-&gt;&gt;LOG:存档
+SMMS-&gt;&gt;USER:输出
+</code></pre>
+
+<h3 id="使用高效的栈结构进行议程管理">使用高效的栈结构进行议程管理</h3>
+
+<p>增加会议时只需加入栈顶，时间复杂度为 O（1）。
+修改或删除会议时，只需将该元素和栈顶元素交换，然后对栈顶元素进行操作，时间复杂度仍为 O（1）。
+清空议程时，只需将栈顶指针指向栈底而无需在数组中擦除数据，时间复杂度仍为 O（1）。</p>
+
+<h3 id="关键字搜索">关键字搜索</h3>
+
+<blockquote>
+  <p>定义会议 n 和 m 相关，当且仅当满足下列任意条件：</p>
+
+  <ul>
+    <li>n 和 m 同名</li>
+    <li>n 和 m 时间有重合部分，并且地点相同或有相同人员（换言之两场会议是否不能同时举行）</li>
+  </ul>
+</blockquote>
+
+<p>基于会议相关的定义，可以判断一个会议是否能够加入议程；也可以像下面一样进行高效严密的关键字搜索。
+例如：</p>
+
+<ul>
+  <li>查询\修改\删除会议名为 NAME 的会议：搜索时仅需将 key.name 设置为”NAME”，其余设为-1。</li>
+  <li>查询\修改\删除地点为 ADDRESS 的会议：将 key.address 设为”ADDRESS”，起止时间分别设成负正无穷，其余设为-1。</li>
+  <li>查询\修改\删除含有参加人员 PERSON 的会议：将 key.num_of_participants 设为 1，key.participants[0]设为”PERSON，起止时间分别设成负正无穷，其余设为-1。多人同理。</li>
+  <li>查询\修改\删除含有以上多关键字的，可以类似地设置 key。</li>
+</ul>
+
+<h3 id="代码模块化且接口全部使用文件流">代码模块化，且接口全部使用文件流</h3>
+
+<p>所有函数接口均使用文件流<code class="highlighter-rouge">FILE*</code>，为快速切换文件\屏幕 IO 提供很大便利。
+与此相对应的，所有的 IO 均通过函数 fscanf 和 fprintf 实现。
+所有的 IO 均写有提示，方便使用。</p>
+
+<h2 id="项目测试">项目测试</h2>
+
+<p>同文件夹下<code class="highlighter-rouge">log.txt</code>文档中保存了用于测试的数据，运行结果均符合预期。</p>
+
+<h2 id="代码接口与实现">代码接口与实现</h2>
+
+<p>代码实现分为数据结构和功能函数两个模块，分别对其展开介绍。所有头文件均写有头文件保护。</p>
+
+<h3 id="数据结构-meetingh">数据结构 meeting.h</h3>
+
+<ul>
+  <li>定义了一个结构体 Meeting，用于描述一场会议，内容见下，未加注释。其中，<code class="highlighter-rouge">struct tm</code>是 c 标准库<code class="highlighter-rouge">&lt;time.h&gt;</code>中定义的用于保存时间的结构体。</li>
+  <li>定义了若干对 Meeting 结构体的操作。</li>
+  <li>define 了一个常量 MAXN，暂定为 128，用来表示 Meeting 中所用数组的最大容量。实际使用时可根据需求修改 MAXN 的 define 并重新编译，十分方便。</li>
+</ul>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#define MAXN 128
+</span><span class="k">typedef</span> <span class="k">struct</span> <span class="n">Meeting</span>
+<span class="p">{</span>
+	<span class="kt">int</span> <span class="n">num_of_participants</span><span class="p">;</span><span class="c1">//参会人数</span>
+	<span class="kt">char</span> <span class="n">name</span><span class="p">[</span><span class="n">MAXN</span><span class="p">],</span><span class="c1">//会议名称</span>
+	     <span class="n">address</span><span class="p">[</span><span class="n">MAXN</span><span class="p">],</span><span class="c1">//会议地址</span>
+	     <span class="n">participants</span><span class="p">[</span><span class="n">MAXN</span><span class="p">][</span><span class="n">MAXN</span><span class="p">];</span><span class="c1">//参会人员</span>
+	<span class="k">struct</span> <span class="n">tm</span> <span class="n">begin</span><span class="p">,</span><span class="n">end</span><span class="p">;</span><span class="c1">//起止时间</span>
+<span class="p">}</span> <span class="n">Meeting</span><span class="p">;</span>
+
+<span class="c1">//从in中读入一个Meeting，并将输入时的提示信息输出到out</span>
+<span class="n">Meeting</span> <span class="nf">getMeeting</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//把m输出到out</span>
+<span class="kt">void</span> <span class="nf">putMeeting</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">,</span><span class="k">const</span> <span class="n">Meeting</span> <span class="o">*</span><span class="n">m</span><span class="p">);</span>
+
+<span class="c1">//比较两个时间a和b的先后关系</span>
+<span class="kt">int</span> <span class="nf">tmCmp</span><span class="p">(</span><span class="k">const</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span><span class="k">const</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">b</span><span class="p">);</span>
+
+<span class="c1">//判断会议m和n是否冲突</span>
+<span class="kt">int</span> <span class="nf">isRepel</span><span class="p">(</span><span class="k">const</span> <span class="n">Meeting</span> <span class="o">*</span><span class="n">m</span><span class="p">,</span><span class="k">const</span> <span class="n">Meeting</span> <span class="o">*</span><span class="n">n</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h4 id="实现-meetingc">实现 meeting.c</h4>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Meeting</span> <span class="nf">getMeeting</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">Meeting</span> <span class="n">tmp_m</span><span class="p">;</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the Meeting name.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fscanf</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="s">"%s"</span><span class="p">,</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">name</span><span class="p">);</span>
+
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the Meeting address.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fscanf</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="s">"%s"</span><span class="p">,</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">address</span><span class="p">);</span>
+
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the begin time(year month day hour minute).</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fscanf</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="s">"%d%d%d%d%d"</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_year</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_mon</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_mday</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_hour</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_min</span><span class="p">);</span>
+
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the end time(year month day hour minute).</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fscanf</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="s">"%d%d%d%d%d"</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">end</span><span class="p">.</span><span class="n">tm_year</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">end</span><span class="p">.</span><span class="n">tm_mon</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">end</span><span class="p">.</span><span class="n">tm_mday</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">end</span><span class="p">.</span><span class="n">tm_hour</span><span class="p">,</span>
+	       <span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">end</span><span class="p">.</span><span class="n">tm_min</span><span class="p">);</span>
+
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the number of participants.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fscanf</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="s">"%d"</span><span class="p">,</span><span class="o">&amp;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">num_of_participants</span><span class="p">);</span>
+
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">num_of_participants</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the name of participant %d.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">i</span><span class="p">);</span>
+		<span class="n">fscanf</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="s">"%s"</span><span class="p">,</span><span class="n">tmp_m</span><span class="p">.</span><span class="n">participants</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+	<span class="p">}</span>
+
+	<span class="k">return</span> <span class="n">tmp_m</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">putMeeting</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">,</span><span class="k">const</span> <span class="n">Meeting</span> <span class="o">*</span><span class="n">m</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"%s %s</span><span class="se">\n</span><span class="s">%d %d %d %d %d</span><span class="se">\n</span><span class="s">%d %d %d %d %d</span><span class="se">\n</span><span class="s">%d"</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">address</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_year</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_mon</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_mday</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_hour</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">begin</span><span class="p">.</span><span class="n">tm_min</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">end</span><span class="p">.</span><span class="n">tm_year</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">end</span><span class="p">.</span><span class="n">tm_mon</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">end</span><span class="p">.</span><span class="n">tm_mday</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">end</span><span class="p">.</span><span class="n">tm_hour</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">end</span><span class="p">.</span><span class="n">tm_min</span><span class="p">,</span>
+	        <span class="n">m</span><span class="o">-&gt;</span><span class="n">num_of_participants</span><span class="p">);</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">j</span><span class="o">&lt;</span> <span class="n">m</span><span class="o">-&gt;</span><span class="n">num_of_participants</span><span class="p">;</span> <span class="o">++</span><span class="n">j</span><span class="p">)</span>
+		<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">" %s"</span><span class="p">,</span><span class="n">m</span><span class="o">-&gt;</span><span class="n">participants</span><span class="p">[</span><span class="n">j</span><span class="p">]);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">tmCmp</span><span class="p">(</span><span class="k">const</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span><span class="k">const</span> <span class="k">struct</span> <span class="n">tm</span> <span class="o">*</span><span class="n">b</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_year</span> <span class="o">!=</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_year</span><span class="p">)</span>
+		<span class="k">return</span> <span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_year</span> <span class="o">-</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_year</span><span class="p">;</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_mon</span> <span class="o">!=</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_mon</span><span class="p">)</span>
+		<span class="k">return</span> <span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_mon</span> <span class="o">-</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_mon</span><span class="p">;</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_mday</span> <span class="o">!=</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_mday</span><span class="p">)</span>
+		<span class="k">return</span> <span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_mday</span> <span class="o">-</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_mday</span><span class="p">;</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_hour</span> <span class="o">!=</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_hour</span><span class="p">)</span>
+		<span class="k">return</span> <span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_hour</span> <span class="o">-</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_hour</span><span class="p">;</span>
+	<span class="k">return</span> <span class="n">a</span><span class="o">-&gt;</span><span class="n">tm_min</span> <span class="o">-</span> <span class="n">b</span><span class="o">-&gt;</span><span class="n">tm_min</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">isRepel</span><span class="p">(</span><span class="k">const</span> <span class="n">Meeting</span> <span class="o">*</span><span class="n">p</span><span class="p">,</span><span class="k">const</span> <span class="n">Meeting</span> <span class="o">*</span><span class="n">q</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span><span class="n">q</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">))</span>
+		<span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">tmCmp</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">end</span><span class="p">,</span><span class="o">&amp;</span><span class="n">q</span><span class="o">-&gt;</span><span class="n">begin</span><span class="p">)</span><span class="o">&lt;</span><span class="mi">0</span><span class="o">||</span><span class="n">tmCmp</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">begin</span><span class="p">,</span><span class="o">&amp;</span><span class="n">q</span><span class="o">-&gt;</span><span class="n">end</span><span class="p">)</span><span class="o">&gt;</span><span class="mi">0</span><span class="p">)</span>
+		<span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">address</span><span class="p">,</span><span class="n">q</span><span class="o">-&gt;</span><span class="n">address</span><span class="p">))</span>
+		<span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">num_of_participants</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">q</span><span class="o">-&gt;</span><span class="n">num_of_participants</span><span class="p">;</span> <span class="o">++</span><span class="n">j</span><span class="p">)</span>
+			<span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">participants</span><span class="p">[</span><span class="n">i</span><span class="p">],</span><span class="n">q</span><span class="o">-&gt;</span><span class="n">participants</span><span class="p">[</span><span class="n">j</span><span class="p">]))</span>
+				<span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+	<span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h3 id="功能函数-funch">功能函数 func.h</h3>
+
+<ul>
+  <li>选用栈结构用于存储会议，用数组和记录栈顶下标的变量实现。除此之外<strong>未用任何全局变量</strong>。</li>
+  <li>实现了需求分析中的所有功能函数。</li>
+  <li>所有功能函数均有相同的接口<code class="highlighter-rouge">(FILE *in,FILE *out)</code>表示从 in 中获取数据，并通过 out 输出信息。这样的设计既方便了代码的调试，也方便了用户的交互。</li>
+</ul>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">extern</span> <span class="kt">int</span> <span class="n">top</span><span class="p">;</span>
+<span class="k">extern</span> <span class="n">Meeting</span> <span class="n">stack</span><span class="p">[</span><span class="n">MAXN</span><span class="p">];</span>
+
+<span class="c1">//读入会议，若不产生冲突则加入议程，否则报错</span>
+<span class="kt">void</span> <span class="nf">add</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//按关键字删除会议</span>
+<span class="kt">void</span> <span class="nf">del</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//按关键字修改会议</span>
+<span class="kt">void</span> <span class="nf">modify</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//按关键字查询会议</span>
+<span class="kt">void</span> <span class="nf">query</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//读档</span>
+<span class="kt">void</span> <span class="nf">fin</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//存档</span>
+<span class="kt">void</span> <span class="nf">fout</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//清空</span>
+<span class="kt">void</span> <span class="nf">clear</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+
+<span class="c1">//输出提示信息</span>
+<span class="kt">void</span> <span class="nf">help</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h4 id="实现-funcc">实现 func.c</h4>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="n">top</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+<span class="n">Meeting</span> <span class="n">stack</span><span class="p">[</span><span class="n">MAXN</span><span class="p">];</span>
+
+<span class="kt">void</span> <span class="nf">add</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">stack</span><span class="p">[</span><span class="n">top</span><span class="p">]</span><span class="o">=</span><span class="n">getMeeting</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">top</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="k">if</span><span class="p">(</span><span class="n">isRepel</span><span class="p">(</span><span class="o">&amp;</span><span class="n">stack</span><span class="p">[</span><span class="n">top</span><span class="p">],</span><span class="o">&amp;</span><span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+		<span class="p">{</span>
+			<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Error: Repel with Meeting %s.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">name</span><span class="p">);</span>
+			<span class="k">return</span><span class="p">;</span>
+		<span class="p">}</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Add %s successfully.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">stack</span><span class="p">[</span><span class="n">top</span><span class="o">++</span><span class="p">].</span><span class="n">name</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">del</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the key(-1 for no key).</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">Meeting</span> <span class="n">key</span><span class="o">=</span><span class="n">getMeeting</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">top</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="k">if</span><span class="p">(</span><span class="n">isRepel</span><span class="p">(</span><span class="o">&amp;</span><span class="n">key</span><span class="p">,</span><span class="o">&amp;</span><span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+		<span class="p">{</span>
+			<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Delele %s successfully.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">name</span><span class="p">);</span>
+			<span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="o">--</span><span class="p">]</span><span class="o">=</span><span class="n">stack</span><span class="p">[</span><span class="o">--</span><span class="n">top</span><span class="p">];</span>
+		<span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">modify</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="kt">int</span> <span class="n">t_len</span><span class="o">=</span><span class="n">top</span><span class="p">;</span>
+	<span class="n">del</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+	<span class="k">while</span><span class="p">(</span><span class="n">top</span><span class="o">&lt;</span><span class="n">t_len</span><span class="p">)</span>
+		<span class="n">add</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">query</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input the key(-1 for no key).</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">Meeting</span> <span class="n">key</span><span class="o">=</span><span class="n">getMeeting</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">top</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="k">if</span><span class="p">(</span><span class="n">isRepel</span><span class="p">(</span><span class="o">&amp;</span><span class="n">key</span><span class="p">,</span><span class="o">&amp;</span><span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+		<span class="p">{</span>
+			<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Find "</span><span class="p">);</span>
+			<span class="n">putMeeting</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="o">&amp;</span><span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+		<span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">fin</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Start input from </span><span class="se">\'</span><span class="s">log.txt</span><span class="se">\'</span><span class="s">.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="kt">FILE</span> <span class="o">*</span><span class="n">f</span><span class="o">=</span><span class="n">fopen</span><span class="p">(</span><span class="s">"log.txt"</span><span class="p">,</span><span class="s">"r"</span><span class="p">);</span>
+	<span class="k">if</span><span class="p">(</span><span class="n">f</span><span class="o">==</span><span class="nb">NULL</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Error:Do not find </span><span class="se">\'</span><span class="s">log.txt</span><span class="se">\'\n</span><span class="s">"</span><span class="p">);</span>
+		<span class="k">return</span><span class="p">;</span>
+	<span class="p">}</span>
+	<span class="kt">int</span> <span class="n">t_len</span><span class="p">;</span>
+	<span class="n">fscanf</span><span class="p">(</span><span class="n">f</span><span class="p">,</span><span class="s">"%d"</span><span class="p">,</span><span class="o">&amp;</span><span class="n">t_len</span><span class="p">);</span>
+	<span class="k">while</span><span class="p">(</span><span class="n">t_len</span><span class="o">--</span><span class="p">)</span>
+		<span class="n">add</span><span class="p">(</span><span class="n">f</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+	<span class="n">fclose</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input from </span><span class="se">\'</span><span class="s">log.txt</span><span class="se">\'</span><span class="s"> successfully.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">fout</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Start output to </span><span class="se">\'</span><span class="s">log.txt</span><span class="se">\'</span><span class="s">.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="kt">FILE</span> <span class="o">*</span><span class="n">f</span><span class="o">=</span><span class="n">fopen</span><span class="p">(</span><span class="s">"log.txt"</span><span class="p">,</span><span class="s">"w"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">f</span><span class="p">,</span><span class="s">"%d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">top</span><span class="p">);</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">top</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="n">putMeeting</span><span class="p">(</span><span class="n">f</span><span class="p">,</span><span class="o">&amp;</span><span class="n">stack</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+	<span class="n">fclose</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Output to </span><span class="se">\'</span><span class="s">log.txt</span><span class="se">\'</span><span class="s"> successfully.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">clear</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">top</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Clear successfully.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">help</span><span class="p">(</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span><span class="kt">FILE</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"fin : add new meetings from </span><span class="se">\'</span><span class="s">log.txt</span><span class="se">\'</span><span class="s"> to memory if they do not repel.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"fout : output all the meetings from memory to </span><span class="se">\'</span><span class="s">log.txt</span><span class="se">\'</span><span class="s">.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"add : add a new meeting to memory if it does not repel.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"delete : delete all the meetings which repel with the key.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"modify : modify all the meetings which repel with the key.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"clear : clear all the meetings from memory.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"help : get available instructions.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"EOF(Ctrl+Z in Windows) : exit.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h3 id="测试">测试</h3>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include&lt;stdio.h&gt;
+#include&lt;string.h&gt;
+#include"func.h"
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+	<span class="kt">FILE</span> <span class="o">*</span><span class="n">in</span><span class="o">=</span><span class="n">stdin</span><span class="p">,</span><span class="o">*</span><span class="n">out</span><span class="o">=</span><span class="n">stdout</span><span class="p">;</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Scientific Meeting Management System by WuK&amp;LSY</span><span class="se">\n\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"Input </span><span class="se">\'</span><span class="s">fin</span><span class="se">\'</span><span class="s"> to read from log,or </span><span class="se">\'</span><span class="s">help</span><span class="se">\'</span><span class="s"> to get other available instructions.</span><span class="se">\n\n</span><span class="s">"</span><span class="p">);</span>
+	<span class="k">for</span><span class="p">(</span><span class="kt">char</span> <span class="n">s</span><span class="p">[</span><span class="n">MAXN</span><span class="p">];</span> <span class="n">fscanf</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="s">"%s"</span><span class="p">,</span><span class="n">s</span><span class="p">)</span><span class="o">!=</span><span class="n">EOF</span><span class="p">;</span> <span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">))</span>
+	<span class="p">{</span>
+		<span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"add"</span><span class="p">))</span>
+			<span class="n">add</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"delete"</span><span class="p">))</span>
+			<span class="n">del</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"modify"</span><span class="p">))</span>
+			<span class="n">modify</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"query"</span><span class="p">))</span>
+			<span class="n">query</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"fin"</span><span class="p">))</span>
+			<span class="n">fin</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"fout"</span><span class="p">))</span>
+			<span class="n">fout</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"clear"</span><span class="p">))</span>
+			<span class="n">clear</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="s">"help"</span><span class="p">))</span>
+			<span class="n">help</span><span class="p">(</span><span class="n">in</span><span class="p">,</span><span class="n">out</span><span class="p">);</span>
+		<span class="k">else</span> <span class="n">fprintf</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="s">"</span><span class="se">\'</span><span class="s">%s</span><span class="se">\'</span><span class="s"> is not an available instruction,and you can in </span><span class="se">\'</span><span class="s">help</span><span class="se">\'</span><span class="s"> to get available instructions.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">s</span><span class="p">);</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+:ET

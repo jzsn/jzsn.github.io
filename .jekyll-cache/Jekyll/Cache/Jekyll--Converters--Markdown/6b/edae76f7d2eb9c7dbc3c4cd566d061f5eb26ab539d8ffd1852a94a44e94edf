@@ -1,0 +1,484 @@
+I"�<h2 id="实验简介">实验简介</h2>
+
+<p>用 MPI 和 CUDA 实现链表求序（linked list ranking）算法，并与串行程序比较。</p>
+
+<ul>
+  <li>输入：一个 N 元素的单向链表，该链表放在一个长度为 N 的向量中。链表的每一个元素（除链尾的一个）都有一个后继的数组下标。链尾的元素的后继为<code class="highlighter-rouge">-1</code>。</li>
+  <li>输出：定义链表元素的序号（rank）为“其后继的总数”，例如链头的序号为 N-1、链尾的序号为 0。向量中的元素不一定按照链表的顺序存放。要求算出每一个向量元素的序号。</li>
+</ul>
+
+<h2 id="实验环境">实验环境</h2>
+
+<p>实验在老师提供的计算集群的一个节点上进行。单节点的显卡配置如下：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>nvdia-smi
+Mon Dec  2 08:38:49 2019
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 410.48                 Driver Version: 410.48                    |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|<span class="o">===============================</span>+<span class="o">======================</span>+<span class="o">======================</span>|
+|   0  Tesla V100-PCIE...  On   | 00000000:3B:00.0 Off |                    0 |
+| N/A   30C    P0    24W / 250W |      0MiB / 16130MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+
++-----------------------------------------------------------------------------+
+| Processes:                                                       GPU Memory |
+|  GPU       PID   Type   Process name                             Usage      |
+|<span class="o">=============================================================================</span>|
+|  No running processes found                                                 |
++-----------------------------------------------------------------------------+
+</code></pre></div></div>
+
+<h2 id="实验过程与分析">实验过程与分析</h2>
+
+<p>List Ranking 是一个比较经典的研究并行算法设计的问题，因为这个问题的并行算法相对于串行版本很难有十分明显的速度改进。但是并行化的好处并不仅仅是提速。</p>
+
+<p>比如，单机上的内存总量很多情况下是不足够的，而多机并行的时候可以使用更大的内存。针对这一问题，并行化的优点是可以通过扩充硬件的规模从而扩充能够处理问题的规模，这是串行程序比不了的。</p>
+
+<h3 id="调度脚本list_rankingpbs">调度脚本<code class="highlighter-rouge">list_ranking.pbs</code></h3>
+
+<p>这里由于临近期末，集群资源比较紧张，所有的调度都只占用集群上的一个节点进行。MPI 使用一台主机上的 32 个核进行并行；CUDA 使用节点上的单张 v100 显卡。为方便起见，我将所有的测试代码写进了一个测试脚本<code class="highlighter-rouge">list_ranking.pbs</code>中，这样直接对这个脚本进行调度运行即可自动运行完整实验并进行计时。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#PBS -N list_ranking</span>
+<span class="c">#PBS -l nodes=1:ppn=32:gpus=1</span>
+<span class="c">#PBS -j oe</span>
+<span class="c">#PBS -q gpu</span>
+<span class="nb">source</span> /public/software/profile.d/mpi_openmpi-intel-2.1.2.sh
+<span class="nb">source</span> /public/software/profile.d/cuda10.0.sh
+<span class="nb">cd</span> <span class="nv">$PBS_O_WORKDIR</span>
+
+gcc gen_list_ranking_data.c <span class="nt">-o</span> gen_list_ranking_data <span class="nt">-std</span><span class="o">=</span>c99
+./gen_list_ranking_data <span class="o">&gt;</span> list_ranking_data.txt
+
+gcc list_ranking.c <span class="nt">-o</span> list_ranking <span class="nt">-std</span><span class="o">=</span>c99
+<span class="nb">time</span> ./list_ranking &lt; list_ranking_data.txt <span class="o">&gt;</span> list_ranking_out.txt
+
+mpicc list_ranking_mpi.c <span class="nt">-o</span> list_ranking_mpi <span class="nt">-std</span><span class="o">=</span>c99
+<span class="nb">time </span>mpiexec <span class="nt">-machinefile</span> <span class="nv">$PBS_NODEFILE</span> ./list_ranking_mpi &lt; list_ranking_data.txt <span class="o">&gt;</span> list_ranking_mpi_out.txt
+
+nvcc list_ranking_cuda.cu <span class="nt">-o</span> list_ranking_cuda
+<span class="nb">time</span> ./list_ranking_cuda &lt; list_ranking_data.txt <span class="o">&gt;</span> list_ranking_cuda_out.txt
+</code></pre></div></div>
+
+<h3 id="运行时间list_rankingo17502">运行时间<code class="highlighter-rouge">list_ranking.o17502</code></h3>
+
+<p>自上而下分别是串行算法的时间（<code class="highlighter-rouge">1.977s</code>），MPI 算法的时间（<code class="highlighter-rouge">5.976s</code>），CUDA 算法的时间（<code class="highlighter-rouge">3.246s</code>）。可以看到，这里实现的两个并行算法都在不过分增加并行开销的情况下增加了串行算法的可扩展性。</p>
+
+<p><strong>这个问题中并行算法是不可能快于同等情况下的串行算法的</strong>，因为串行算法的时间复杂度是$O(n)$，而读入这个向量的时间复杂度已经是$O(n)$了，并行算法无论如何都需要先读入向量，时间复杂度上不可能优于$O(n)$。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+real	0m1.977s
+user	0m1.710s
+sys	0m0.176s
+
+real	0m5.976s
+user	1m20.123s
+sys	0m32.837s
+
+real	0m3.246s
+user	0m2.251s
+sys	0m0.806s
+</code></pre></div></div>
+
+<h3 id="构造生成数据gen_list_ranking_datac">构造生成数据<code class="highlighter-rouge">gen_list_ranking_data.c</code></h3>
+
+<p>此处我使用了老师提供的数据生成器。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+</span>
+<span class="kt">int</span> <span class="o">*</span><span class="nf">gen_linked_list_1</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+
+    <span class="kt">int</span> <span class="o">*</span><span class="n">list</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nb">NULL</span> <span class="o">!=</span> <span class="n">list</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">free</span><span class="p">(</span><span class="n">list</span><span class="p">);</span>
+        <span class="n">list</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="mi">0</span> <span class="o">==</span> <span class="n">N</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"N is 0, exit</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="n">list</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">));</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nb">NULL</span> <span class="o">==</span> <span class="n">list</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"Can not allocate memory for output array</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+
+    <span class="k">return</span> <span class="n">list</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">//i和j的后继元素交换位置</span>
+<span class="kt">void</span> <span class="nf">swap</span><span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="n">list</span><span class="p">,</span> <span class="kt">int</span> <span class="n">i</span><span class="p">,</span> <span class="kt">int</span> <span class="n">j</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="o">||</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="o">||</span> <span class="n">i</span> <span class="o">==</span> <span class="n">j</span><span class="p">)</span>
+        <span class="k">return</span><span class="p">;</span>
+
+    <span class="kt">int</span> <span class="n">p</span> <span class="o">=</span> <span class="n">list</span><span class="p">[</span><span class="n">i</span><span class="p">];</span> <span class="c1">//保存i后继元素下标p</span>
+    <span class="kt">int</span> <span class="n">q</span> <span class="o">=</span> <span class="n">list</span><span class="p">[</span><span class="n">j</span><span class="p">];</span> <span class="c1">//保存j后继元素下标q</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">p</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span> <span class="o">||</span> <span class="n">q</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span><span class="p">;</span> <span class="c1">//如果有一个没有后继元素</span>
+
+    <span class="kt">int</span> <span class="n">pnext</span> <span class="o">=</span> <span class="n">list</span><span class="p">[</span><span class="n">p</span><span class="p">];</span> <span class="c1">//保存p的后继元素下标</span>
+    <span class="kt">int</span> <span class="n">qnext</span> <span class="o">=</span> <span class="n">list</span><span class="p">[</span><span class="n">q</span><span class="p">];</span> <span class="c1">//保存q的后继元素下标</span>
+
+    <span class="c1">//i,j的后继元素交换位置</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">p</span> <span class="o">==</span> <span class="n">j</span><span class="p">)</span>
+    <span class="p">{</span> <span class="c1">//j是i的后继</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">q</span><span class="p">;</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">list</span><span class="p">[</span><span class="n">q</span><span class="p">];</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="n">q</span><span class="p">)</span>
+    <span class="p">{</span> <span class="c1">//i是j的后继</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span><span class="p">;</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">list</span><span class="p">[</span><span class="n">p</span><span class="p">];</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">q</span><span class="p">;</span>     <span class="c1">//i的后继改为q</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span><span class="p">;</span>     <span class="c1">//j的后继改为p</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">qnext</span><span class="p">;</span> <span class="c1">//p的后继元素改为原来q的后继</span>
+        <span class="n">list</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">pnext</span><span class="p">;</span> <span class="c1">//q的后继元素改为原来p的后继</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="o">*</span><span class="nf">gen_linked_list_2</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="o">*</span><span class="n">list</span><span class="p">;</span>
+
+    <span class="n">list</span> <span class="o">=</span> <span class="n">gen_linked_list_1</span><span class="p">(</span><span class="n">N</span><span class="p">);</span>
+
+    <span class="kt">int</span> <span class="n">p</span> <span class="o">=</span> <span class="n">N</span> <span class="o">/</span> <span class="mi">5</span><span class="p">;</span>
+
+    <span class="kt">int</span> <span class="n">i</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">k</span><span class="p">;</span>
+
+    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span> <span class="o">+=</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">int</span> <span class="n">k</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="n">i</span> <span class="o">+</span> <span class="n">p</span><span class="p">)</span> <span class="o">%</span> <span class="n">N</span><span class="p">;</span>
+        <span class="n">swap</span><span class="p">(</span><span class="n">list</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">k</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">list</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+
+    <span class="kt">int</span> <span class="n">N</span> <span class="o">=</span> <span class="mi">10000000</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="o">*</span><span class="n">qq</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+    <span class="c1">// qq=gen_linked_list_1(N);</span>
+    <span class="c1">// printf("\nhere is the list\n");</span>
+    <span class="c1">// for(i=0; i&lt;N; i++)</span>
+    <span class="c1">// printf("%3d ", qq[i]);</span>
+    <span class="c1">// printf("\n");</span>
+    <span class="c1">// free(qq);</span>
+    <span class="n">qq</span> <span class="o">=</span> <span class="n">gen_linked_list_2</span><span class="p">(</span><span class="n">N</span><span class="p">);</span>
+    <span class="c1">//printf("\nhere is the new list\n");</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"%3d "</span><span class="p">,</span> <span class="n">N</span><span class="p">);</span> <span class="c1">//输出链表元素个数</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="c1">//输出链表全部元素</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%3d "</span><span class="p">,</span> <span class="n">qq</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+
+    <span class="n">free</span><span class="p">(</span><span class="n">qq</span><span class="p">);</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>终端执行下述指令，得到用于测试的数据<code class="highlighter-rouge">list_ranking_data.txt</code>。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gcc gen_list_ranking_data.c <span class="nt">-o</span> gen_list_ranking_data <span class="nt">-std</span><span class="o">=</span>c99
+./gen_list_ranking_data <span class="o">&gt;</span> list_ranking_data.txt
+</code></pre></div></div>
+
+<p><code class="highlighter-rouge">list_ranking_data.txt</code>有着如下的结构，这里只放出向量的前四个元素。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>10000000
+<span class="nt">-1</span> 4000014 2000003 4000030 ...
+</code></pre></div></div>
+
+<h3 id="串行扫描算法">串行扫描算法</h3>
+
+<p>最简单的串行算法即扫描整个列表。解释一下整个算法的过程：</p>
+
+<ol>
+  <li>读入向量<code class="highlighter-rouge">v</code></li>
+  <li>根据<code class="highlighter-rouge">v</code>计算每个元素的前驱<code class="highlighter-rouge">pre</code>，同时找出链表尾<code class="highlighter-rouge">last</code></li>
+  <li>从链表尾<code class="highlighter-rouge">last</code>开始顺次访问前驱<code class="highlighter-rouge">pre</code>，遍历的顺序就是我们要求的链表序。</li>
+</ol>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+</span><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+	<span class="kt">int</span> <span class="n">n</span><span class="p">,</span> <span class="n">last</span><span class="p">;</span>
+	<span class="n">scanf</span><span class="p">(</span><span class="s">"%d"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">n</span><span class="p">);</span>
+	<span class="kt">int</span> <span class="o">*</span><span class="n">v</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">),</span>
+		<span class="o">*</span><span class="n">a</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">),</span>
+		<span class="o">*</span><span class="n">pre</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">);</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="n">scanf</span><span class="p">(</span><span class="s">"%d"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+			<span class="n">last</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+		<span class="k">else</span>
+			<span class="n">pre</span><span class="p">[</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+	<span class="p">}</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">u</span> <span class="o">=</span> <span class="n">last</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">;</span> <span class="o">--</span><span class="n">i</span><span class="p">,</span> <span class="n">u</span> <span class="o">=</span> <span class="n">pre</span><span class="p">[</span><span class="n">u</span><span class="p">])</span>
+		<span class="n">a</span><span class="p">[</span><span class="n">u</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="n">printf</span><span class="p">(</span><span class="s">"%d "</span><span class="p">,</span> <span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+	<span class="n">free</span><span class="p">(</span><span class="n">pre</span><span class="p">);</span>
+	<span class="n">free</span><span class="p">(</span><span class="n">a</span><span class="p">);</span>
+	<span class="n">free</span><span class="p">(</span><span class="n">v</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>终端执行下属指令，可以计时执行并将结果写入<code class="highlighter-rouge">list_ranking_out.txt</code>。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gcc list_ranking.c <span class="nt">-o</span> list_ranking <span class="nt">-std</span><span class="o">=</span>c99
+<span class="nb">time</span> ./list_ranking &lt; list_ranking_data.txt <span class="o">&gt;</span> list_ranking_out.txt
+</code></pre></div></div>
+
+<p><code class="highlighter-rouge">list_ranking_out.txt</code>前四个元素为如下的结构，手动检查第一个元素的 ranking 是<code class="highlighter-rouge">9999999</code>，是正确的。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>9999999 5999984 9999997 5999968 ...
+</code></pre></div></div>
+
+<p><strong>直接串行扫描算法修改出来的并行算法不会有理想的加速效果。</strong>理由是，下面这段代码中，重复执行<code class="highlighter-rouge">u = pre[u]</code>从链表尾开始依次向前找前驱节点，这个过程是串行的，有循环依赖，不可以直接划分到多进程并行执行。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">u</span> <span class="o">=</span> <span class="n">last</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">;</span> <span class="o">--</span><span class="n">i</span><span class="p">,</span> <span class="n">u</span> <span class="o">=</span> <span class="n">pre</span><span class="p">[</span><span class="n">u</span><span class="p">])</span>
+	<span class="n">a</span><span class="p">[</span><span class="n">u</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h3 id="mpi-实现的-wyllie-算法list_ranking_mpic">MPI 实现的 Wyllie 算法<code class="highlighter-rouge">list_ranking_mpi.c</code></h3>
+
+<p>即使用 point jumping（点倍增）的方法来计算各个 rank，是最简单的并行算法。</p>
+
+<blockquote>
+  <p>Wyllie 算法原理：</p>
+
+  <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span> <span class="c1"># 初始化，其中v代表初始向量，即每个节点后继
+</span>    <span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">&gt;=</span><span class="mi">0</span> <span class="c1"># a代表每个节点
+</span><span class="k">while</span> <span class="n">exists</span><span class="p">(</span><span class="n">i</span> <span class="o">=&gt;</span> <span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">&gt;=</span><span class="mi">0</span><span class="p">):</span> <span class="c1"># 此部分并行执行，每轮迭代要同步
+</span>    <span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">a</span><span class="p">[</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+    <span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+</code></pre></div>  </div>
+</blockquote>
+
+<p>如上面的伪代码，初始化过程和每轮迭代都是可以划分到多进程执行的。当然，这里得到的<code class="highlighter-rouge">a</code>是到链表尾部的距离，用链表长度相减就能得到我们所需要的序号。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;mpi.h&gt;
+</span><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">**</span><span class="n">argv</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="kt">int</span> <span class="n">comSize</span><span class="p">,</span> <span class="n">comRank</span><span class="p">,</span> <span class="n">n</span><span class="p">;</span>
+	<span class="n">MPI_Init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">argc</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">argv</span><span class="p">);</span>
+	<span class="n">MPI_Comm_size</span><span class="p">(</span><span class="n">MPI_COMM_WORLD</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">comSize</span><span class="p">);</span>
+	<span class="n">MPI_Comm_rank</span><span class="p">(</span><span class="n">MPI_COMM_WORLD</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">comRank</span><span class="p">);</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">comRank</span><span class="p">)</span>
+		<span class="n">scanf</span><span class="p">(</span><span class="s">"%d"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">n</span><span class="p">);</span>
+
+	<span class="n">MPI_Bcast</span><span class="p">(</span>
+		<span class="o">&amp;</span><span class="n">n</span><span class="p">,</span>
+		<span class="mi">1</span><span class="p">,</span>
+		<span class="n">MPI_INT</span><span class="p">,</span>
+		<span class="mi">0</span><span class="p">,</span>
+		<span class="n">MPI_COMM_WORLD</span><span class="p">);</span>
+
+	<span class="kt">int</span> <span class="n">myLen</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">comSize</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">comSize</span><span class="p">,</span>
+		<span class="n">myBeg</span> <span class="o">=</span> <span class="n">comRank</span> <span class="o">*</span> <span class="n">myLen</span><span class="p">,</span>
+		<span class="o">*</span><span class="n">myV</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span> <span class="o">*</span> <span class="n">myLen</span><span class="p">),</span>
+		<span class="o">*</span><span class="n">myA</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span> <span class="o">*</span> <span class="n">myLen</span><span class="p">),</span>
+		<span class="o">*</span><span class="n">v</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">),</span>
+		<span class="o">*</span><span class="n">a</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">);</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">comRank</span><span class="p">)</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+			<span class="n">scanf</span><span class="p">(</span><span class="s">"%d"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+
+	<span class="n">MPI_Bcast</span><span class="p">(</span>
+		<span class="n">v</span><span class="p">,</span>
+		<span class="n">n</span><span class="p">,</span>
+		<span class="n">MPI_INT</span><span class="p">,</span>
+		<span class="mi">0</span><span class="p">,</span>
+		<span class="n">MPI_COMM_WORLD</span><span class="p">);</span>
+
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">myLen</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">myV</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">myBeg</span><span class="p">];</span>
+		<span class="n">myA</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">myV</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="p">}</span>
+
+	<span class="n">MPI_Allgather</span><span class="p">(</span>
+		<span class="n">myA</span><span class="p">,</span>
+		<span class="n">myLen</span><span class="p">,</span>
+		<span class="n">MPI_INT</span><span class="p">,</span>
+		<span class="n">a</span><span class="p">,</span>
+		<span class="n">myLen</span><span class="p">,</span>
+		<span class="n">MPI_INT</span><span class="p">,</span>
+		<span class="n">MPI_COMM_WORLD</span><span class="p">);</span>
+
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;&lt;=</span> <span class="mi">1</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">myLen</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+			<span class="k">if</span> <span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">myBeg</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span>
+			<span class="p">{</span>
+				<span class="n">myA</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">myBeg</span><span class="p">]</span> <span class="o">+</span> <span class="n">a</span><span class="p">[</span><span class="n">v</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">myBeg</span><span class="p">]];</span>
+				<span class="n">myV</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="n">v</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">myBeg</span><span class="p">]];</span>
+			<span class="p">}</span>
+
+		<span class="n">MPI_Allgather</span><span class="p">(</span>
+			<span class="n">myA</span><span class="p">,</span>
+			<span class="n">myLen</span><span class="p">,</span>
+			<span class="n">MPI_INT</span><span class="p">,</span>
+			<span class="n">a</span><span class="p">,</span>
+			<span class="n">myLen</span><span class="p">,</span>
+			<span class="n">MPI_INT</span><span class="p">,</span>
+			<span class="n">MPI_COMM_WORLD</span><span class="p">);</span>
+
+		<span class="n">MPI_Allgather</span><span class="p">(</span>
+			<span class="n">myV</span><span class="p">,</span>
+			<span class="n">myLen</span><span class="p">,</span>
+			<span class="n">MPI_INT</span><span class="p">,</span>
+			<span class="n">v</span><span class="p">,</span>
+			<span class="n">myLen</span><span class="p">,</span>
+			<span class="n">MPI_INT</span><span class="p">,</span>
+			<span class="n">MPI_COMM_WORLD</span><span class="p">);</span>
+	<span class="p">}</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">comRank</span><span class="p">)</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+			<span class="n">printf</span><span class="p">(</span><span class="s">"%d "</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+
+	<span class="n">free</span><span class="p">(</span><span class="n">myV</span><span class="p">);</span>
+	<span class="n">free</span><span class="p">(</span><span class="n">myA</span><span class="p">);</span>
+	<span class="n">free</span><span class="p">(</span><span class="n">v</span><span class="p">);</span>
+	<span class="n">free</span><span class="p">(</span><span class="n">a</span><span class="p">);</span>
+	<span class="n">MPI_Finalize</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>终端执行下述指令，可以计时执行并将结果写入<code class="highlighter-rouge">list_ranking_mpi_out.txt</code>。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mpicc list_ranking_mpi.c <span class="nt">-o</span> list_ranking_mpi <span class="nt">-std</span><span class="o">=</span>c99
+<span class="nb">time </span>mpiexec <span class="nt">-machinefile</span> <span class="nv">$PBS_NODEFILE</span> ./list_ranking_mpi &lt; list_ranking_data.txt <span class="o">&gt;</span> list_ranking_mpi_out.txt
+</code></pre></div></div>
+
+<p><code class="highlighter-rouge">list_ranking_mpi_out.txt</code>前四个元素为如下的结构，手动检查第一个元素的 ranking 是<code class="highlighter-rouge">9999999</code>，是正确的；<code class="highlighter-rouge">list_ranking_mpi_out.txt</code>与<code class="highlighter-rouge">list_ranking_out.txt</code>完全相同。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>9999999 5999984 9999997 5999968 ...
+</code></pre></div></div>
+
+<h3 id="cuda-实现的-wyllie-算法list_ranking_cudacu">CUDA 实现的 Wyllie 算法<code class="highlighter-rouge">list_ranking_cuda.cu</code></h3>
+
+<p>另一种并行链表求序的 SMP 算法[Helman and JaJa, 1999]需要提前知道链表中等分点的分布，不是很适合本例，因此用 CUDA 实现的仍然是 Wyllie 算法。</p>
+
+<p>相比于 MPI 实现的版本，这里没有了节点广播 Bcast 和全聚集 Allgather 的开销，因此时间上快了非常多。然而，仍然需要考虑的是，核函数 work 对<code class="highlighter-rouge">v[v[idx]]</code>和<code class="highlighter-rouge">a[v[idx]]</code>的访问没有对齐，这是算法的瓶颈所在。</p>
+
+<pre><code class="language-clike">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+void __global__ init(int n, int *v, int *a)
+{
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	a[idx] = v[idx] &gt;= 0;
+}
+void __global__ work(int n, int *v, int *a, int *new_v, int *new_a)
+{
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (v[idx] &gt;= 0)
+	{
+		new_a[idx] = a[idx] + a[v[idx]];
+		new_v[idx] = v[v[idx]];
+	}
+}
+int main()
+{
+	int n;
+	scanf("%d", &amp;n);
+
+	int *v = (int *)malloc(sizeof(int) * n),
+		*d_v,
+		*d_v1,
+		*d_a,
+		*d_a1,
+		block = 32, grid = n / block;
+
+	for (int i = 0; i &lt; n; ++i)
+		scanf("%d", &amp;v[i]);
+
+	cudaMalloc(&amp;d_a, sizeof(int) * n);
+	cudaMalloc(&amp;d_a1, sizeof(int) * n);
+	cudaMalloc(&amp;d_v, sizeof(int) * n);
+	cudaMalloc(&amp;d_v1, sizeof(int) * n);
+	cudaMemcpy(d_v, v, sizeof(int) * n, cudaMemcpyHostToDevice);
+
+	init&lt;&lt;&lt;grid, block&gt;&gt;&gt;(n, d_v, d_a);
+	cudaDeviceSynchronize();
+
+	for (int j = 1; j &lt; n; j &lt;&lt;= 1)
+	{
+		work&lt;&lt;&lt;grid, block&gt;&gt;&gt;(n, d_v, d_a, d_v1, d_a1);
+		cudaDeviceSynchronize();
+		int *tmp;
+		tmp = d_v, d_v = d_v1, d_v1 = tmp;
+		tmp = d_a, d_a = d_a1, d_a1 = tmp;
+	}
+
+	cudaMemcpy(v, d_a, sizeof(int) * n, cudaMemcpyDeviceToHost);
+
+	for (int i = 0; i &lt; n; ++i)
+		printf("%d ", n - 1 - v[i]);
+
+	cudaFree(d_v);
+	cudaFree(d_a);
+	cudaFree(d_v1);
+	cudaFree(d_a1);
+	free(v);
+}
+</code></pre>
+
+<p>终端执行下述指令，可以计时执行并将结果写入<code class="highlighter-rouge">list_ranking_cuda_out.txt</code>。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">nvcc</span> <span class="n">list_ranking_cuda</span><span class="p">.</span><span class="n">cu</span> <span class="o">-</span><span class="n">o</span> <span class="n">list_ranking_cuda</span>
+<span class="n">time</span> <span class="p">.</span><span class="o">/</span><span class="n">list_ranking_cuda</span> <span class="o">&lt;</span> <span class="n">list_ranking_data</span><span class="p">.</span><span class="n">txt</span> <span class="o">&gt;</span> <span class="n">list_ranking_cuda_out</span><span class="p">.</span><span class="n">txt</span>
+</code></pre></div></div>
+
+<p><code class="highlighter-rouge">list_ranking_cuda_out.txt</code>前四个元素为如下的结构，手动检查第一个元素的 ranking 是<code class="highlighter-rouge">9999999</code>，是正确的；<code class="highlighter-rouge">list_ranking_cuda_out.txt</code>与<code class="highlighter-rouge">list_ranking_out.txt</code>完全相同。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>9999999 5999984 9999997 5999968 ...
+</code></pre></div></div>
+
+<h2 id="参考文献">参考文献</h2>
+
+<ul>
+  <li><a href="http://staff.ustc.edu.cn/~csli/graduate/algorithms/book6/chap30.htm">http://staff.ustc.edu.cn/~csli/graduate/algorithms/book6/chap30.htm</a></li>
+  <li><a href="https://en.wikipedia.org/wiki/Pointer_jumping">https://en.wikipedia.org/wiki/Pointer_jumping</a></li>
+  <li><a href="http://www.cs.cmu.edu/~scandal/alg/listrank.html">http://www.cs.cmu.edu/~scandal/alg/listrank.html</a></li>
+  <li><a href="https://www.cs.cmu.edu/~glmiller/Publications/Papers/ReMiMo93.pdf">https://www.cs.cmu.edu/~glmiller/Publications/Papers/ReMiMo93.pdf</a></li>
+  <li><a href="http://cdn.iiit.ac.in/cdn/cstar.iiit.ac.in/~kkishore/ics152-rehman.pdf">http://cdn.iiit.ac.in/cdn/cstar.iiit.ac.in/~kkishore/ics152-rehman.pdf</a></li>
+  <li>D. Bader, G. Cong, and J. Feo. On the Architectural Requirements for Efficient Execution of Graph Algorithms. International Conference on Parallel Processing (ICPP), 2005, pages 547-556, June 2005.</li>
+  <li>D. A. Bader, V. Agarwal, and K. Madduri. On the Design and Analysis of Irregular Algorithms on the Cell Processor: A Case Study of List Ranking. In 21st IEEE International Parallel and Distributed Processing Symposium (IPDPS), pages 1-10. IEEE, 2007.</li>
+  <li>D. A. Bader and G. Cong. A Fast, Parallel Spanning Tree Algorithm for Symmetric Multiprocessors (SMPs). Journal of Parallel and Distributed Computing, 65(9):994 - 1006, 2005.</li>
+  <li><a href="https://link.springer.com/content/pdf/10.1007%2FBFb0056600.pdf">https://link.springer.com/content/pdf/10.1007%2FBFb0056600.pdf</a></li>
+</ul>
+:ET

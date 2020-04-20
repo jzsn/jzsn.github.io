@@ -1,0 +1,61 @@
+<h2 id="问题描述">问题描述</h2>
+
+<p>我通过 VSCode 上的 Remote SSH 连接到 <code class="highlighter-rouge">DGX-Station</code>，其中需要通过 <code class="highlighter-rouge">ac5</code> 进行一次跳转。以下是 <code class="highlighter-rouge">C:\Users\wukan\.ssh\config</code> 中的部分内容。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># *号表示保密内容</span>
+Host DGX-Station
+  HostName <span class="k">***</span>.<span class="k">***</span>.<span class="k">***</span>.<span class="k">***</span>
+  User <span class="k">*****</span> <span class="c"># 保密</span>
+  ProxyJump ac5
+
+Host ac5
+  HostName <span class="k">***</span>.<span class="k">***</span>.<span class="k">***</span>.<span class="k">***</span> <span class="c"># 这一项保密</span>
+  User <span class="k">*****</span>
+</code></pre></div></div>
+
+<p>在更新到 VSCode@1.43.1 前可以正常连接上 <code class="highlighter-rouge">DGX-Station</code>，然而今天更新到 1.43.1 后出现了连接报错的问题。以下是运行时的 Log。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span>14:02:27.150] Log Level: 2
+<span class="o">[</span>14:02:27.154] remote-ssh@0.50.1
+<span class="o">[</span>14:02:27.154] win32 x64
+<span class="o">[</span>14:02:27.156] SSH Resolver called <span class="k">for</span> <span class="s2">"ssh-remote+7b22686f73744e616d65223a224447582d53746174696f6e227d"</span>, attempt 1
+<span class="o">[</span>14:02:27.156] SSH Resolver called <span class="k">for </span>host: DGX-Station
+<span class="o">[</span>14:02:27.156] Setting up SSH remote <span class="s2">"DGX-Station"</span>
+<span class="o">[</span>14:02:27.160] Acquiring <span class="nb">local install </span>lock: C:<span class="se">\U</span>sers<span class="se">\w</span>ukan<span class="se">\A</span>ppData<span class="se">\L</span>ocal<span class="se">\T</span>emp<span class="se">\v</span>scode-remote-ssh-DGX-Station-install.lock
+<span class="o">[</span>14:02:27.179] Looking <span class="k">for </span>existing server data file at c:<span class="se">\U</span>sers<span class="se">\w</span>ukan<span class="se">\A</span>ppData<span class="se">\R</span>oaming<span class="se">\C</span>ode<span class="se">\U</span>ser<span class="se">\g</span>lobalStorage<span class="se">\m</span>s-vscode-remote.remote-ssh<span class="se">\v</span>scode-ssh-host-DGX-Station-fe22a9645b44368865c0ba92e2fb881ff1afce94-0.50.1<span class="se">\d</span>ata.json
+<span class="o">[</span>14:02:27.180] Using commit <span class="nb">id</span> <span class="s2">"fe22a9645b44368865c0ba92e2fb881ff1afce94"</span> and quality <span class="s2">"stable"</span> <span class="k">for </span>server
+<span class="o">[</span>14:02:27.181] Install and start server <span class="k">if </span>needed
+<span class="o">[</span>14:02:27.186] Checking ssh with <span class="s2">"ssh -V"</span>
+<span class="o">[</span>14:02:27.250] <span class="o">&gt;</span> OpenSSH_for_Windows_7.7p1, LibreSSL 2.6.5
+<span class="o">[</span>14:02:27.251] Checking ssh with <span class="s2">"C:</span><span class="se">\W</span><span class="s2">INDOWS</span><span class="se">\S</span><span class="s2">ystem32</span><span class="se">\O</span><span class="s2">penSSH</span><span class="se">\s</span><span class="s2">sh.exe -V"</span>
+<span class="o">[</span>14:02:27.302] <span class="o">&gt;</span> OpenSSH_for_Windows_7.7p1, LibreSSL 2.6.5
+<span class="o">[</span>14:02:27.302] Checking ssh with <span class="s2">"C:</span><span class="se">\P</span><span class="s2">rogram Files</span><span class="se">\G</span><span class="s2">it</span><span class="se">\u</span><span class="s2">sr</span><span class="se">\b</span><span class="s2">in</span><span class="se">\s</span><span class="s2">sh.exe -V"</span>
+<span class="o">[</span>14:02:27.374] <span class="o">&gt;</span> OpenSSH_8.1p1, OpenSSL 1.1.1d  10 Sep 2019
+<span class="o">[</span>14:02:27.379] Using SSH config file <span class="s2">"C:</span><span class="se">\U</span><span class="s2">sers</span><span class="se">\w</span><span class="s2">ukan</span><span class="se">\.</span><span class="s2">ssh</span><span class="se">\c</span><span class="s2">onfig"</span>
+<span class="o">[</span>14:02:27.380] askpass server listening on <span class="se">\\</span>.<span class="se">\p</span>ipe<span class="se">\v</span>scode-ssh-askpass-c2d72e421fd1baa25cc036ea7fad59f23912723a-sock
+<span class="o">[</span>14:02:27.380] Spawning <span class="nb">local </span>server with <span class="o">{</span><span class="s2">"ipcHandlePath"</span>:<span class="s2">"</span><span class="se">\\\\</span><span class="s2">.</span><span class="se">\\</span><span class="s2">pipe</span><span class="se">\\</span><span class="s2">vscode-ssh-askpass-367cfd2f8fd33a776e6b45cdd71c9c6a40bdabde-sock"</span>,<span class="s2">"sshCommand"</span>:<span class="s2">"C:</span><span class="se">\\</span><span class="s2">Program Files</span><span class="se">\\</span><span class="s2">Git</span><span class="se">\\</span><span class="s2">usr</span><span class="se">\\</span><span class="s2">bin</span><span class="se">\\</span><span class="s2">ssh.exe"</span>,<span class="s2">"sshArgs"</span>:[<span class="s2">"-v"</span>,<span class="s2">"-T"</span>,<span class="s2">"-D"</span>,<span class="s2">"2869"</span>,<span class="s2">"-F"</span>,<span class="s2">"C:</span><span class="se">\\</span><span class="s2">Users</span><span class="se">\\</span><span class="s2">wukan</span><span class="se">\\</span><span class="s2">.ssh</span><span class="se">\\</span><span class="s2">config"</span>,<span class="s2">"DGX-Station"</span><span class="o">]</span>,<span class="s2">"dataFilePath"</span>:<span class="s2">"c:</span><span class="se">\\</span><span class="s2">Users</span><span class="se">\\</span><span class="s2">wukan</span><span class="se">\\</span><span class="s2">AppData</span><span class="se">\\</span><span class="s2">Roaming</span><span class="se">\\</span><span class="s2">Code</span><span class="se">\\</span><span class="s2">User</span><span class="se">\\</span><span class="s2">globalStorage</span><span class="se">\\</span><span class="s2">ms-vscode-remote.remote-ssh</span><span class="se">\\</span><span class="s2">vscode-ssh-host-DGX-Station-fe22a9645b44368865c0ba92e2fb881ff1afce94-0.50.1</span><span class="se">\\</span><span class="s2">data.json"</span><span class="o">}</span>
+<span class="o">[</span>14:02:27.381] Local server <span class="nb">env</span>: <span class="o">{</span><span class="s2">"DISPLAY"</span>:<span class="s2">"1"</span>,<span class="s2">"ELECTRON_RUN_AS_NODE"</span>:<span class="s2">"1"</span>,<span class="s2">"SSH_ASKPASS"</span>:<span class="s2">"c:</span><span class="se">\\</span><span class="s2">Users</span><span class="se">\\</span><span class="s2">wukan</span><span class="se">\\</span><span class="s2">.vscode</span><span class="se">\\</span><span class="s2">extensions</span><span class="se">\\</span><span class="s2">ms-vscode-remote.remote-ssh-0.50.1</span><span class="se">\\</span><span class="s2">out</span><span class="se">\\</span><span class="s2">local-server</span><span class="se">\\</span><span class="s2">askpass.bat"</span>,<span class="s2">"VSCODE_SSH_ASKPASS_NODE"</span>:<span class="s2">"C:</span><span class="se">\\</span><span class="s2">Users</span><span class="se">\\</span><span class="s2">wukan</span><span class="se">\\</span><span class="s2">AppData</span><span class="se">\\</span><span class="s2">Local</span><span class="se">\\</span><span class="s2">Programs</span><span class="se">\\</span><span class="s2">Microsoft VS Code</span><span class="se">\\</span><span class="s2">Code.exe"</span>,<span class="s2">"VSCODE_SSH_ASKPASS_MAIN"</span>:<span class="s2">"c:</span><span class="se">\\</span><span class="s2">Users</span><span class="se">\\</span><span class="s2">wukan</span><span class="se">\\</span><span class="s2">.vscode</span><span class="se">\\</span><span class="s2">extensions</span><span class="se">\\</span><span class="s2">ms-vscode-remote.remote-ssh-0.50.1</span><span class="se">\\</span><span class="s2">out</span><span class="se">\\</span><span class="s2">askpass-main.js"</span>,<span class="s2">"VSCODE_SSH_ASKPASS_HANDLE"</span>:<span class="s2">"</span><span class="se">\\\\</span><span class="s2">.</span><span class="se">\\</span><span class="s2">pipe</span><span class="se">\\</span><span class="s2">vscode-ssh-askpass-c2d72e421fd1baa25cc036ea7fad59f23912723a-sock"</span><span class="o">}</span>
+<span class="o">[</span>14:02:27.394] Spawned 5100
+<span class="o">[</span>14:02:27.498] <span class="o">&gt;</span> local-server&gt; Spawned ssh: 4944
+<span class="o">[</span>14:02:27.537] stderr&gt; OpenSSH_8.1p1, OpenSSL 1.1.1d  10 Sep 2019
+<span class="o">[</span>14:02:27.641] stderr&gt; OpenSSH_8.1p1, OpenSSL 1.1.1d  10 Sep 2019
+<span class="o">[</span>14:02:27.641] stderr&gt; Can<span class="s1">'t open user config file C:Userswukan.sshconfig: No such file or directory
+[14:02:27.641] stderr&gt; kex_exchange_identification: Connection closed by remote host
+[14:02:27.666] &gt; local-server&gt; ssh child died, shutting down
+[14:02:27.674] Local server exit: 0
+[14:02:27.674] Received install output: OpenSSH_8.1p1, OpenSSL 1.1.1d  10 Sep 2019
+OpenSSH_8.1p1, OpenSSL 1.1.1d  10 Sep 2019
+Can'</span>t open user config file C:Userswukan.sshconfig: No such file or directory
+kex_exchange_identification: Connection closed by remote host
+
+<span class="o">[</span>14:02:27.675] Stopped parsing output early. Remaining text: OpenSSH_8.1p1, OpenSSL 1.1.1d  10 Sep 2019OpenSSH_8.1p1, OpenSSL 1.1.1d  10 Sep 2019Can<span class="s1">'t open user config file C:Userswukan.sshconfig: No such file or directorykex_exchange_identification: Connection closed by remote host
+[14:02:27.675] Failed to parse remote port from server output
+[14:02:27.676] Resolver error:
+[14:02:27.679] ------
+</span></code></pre></div></div>
+
+<p>此外，连接不需要跳转的节点（例如 <code class="highlighter-rouge">ac5</code>）没有出现问题。</p>
+
+<h2 id="解决方案">解决方案</h2>
+
+<p>从 <code class="highlighter-rouge">[14:02:27.641] stderr&gt; Can't open user config file C:Userswukan.sshconfig: No such file or directory</code> 这一行报错来看，新版本更新后似乎将 ssh_config 的地址<code class="highlighter-rouge">C:\Users\wukan\.ssh\config</code>中的<code class="highlighter-rouge">\</code>识别成转移符号了。目前我在本地 vscode 找到这一项设置：<code class="highlighter-rouge">@ext:ms-vscode-remote.remote-ssh,ms-vscode-remote.remote-ssh-edit config file</code> ，将其值由空改成 <code class="highlighter-rouge">C:\\Users\\wukan\\.ssh\\config</code>，这样暂时解决了问题。我已经提了 <a href="https://github.com/microsoft/vscode-remote-release/issues/2588">issue</a>，还要等官方来修复了。</p>

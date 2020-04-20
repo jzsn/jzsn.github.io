@@ -1,0 +1,225 @@
+I"<p<h2 id="简介">简介</h2>
+
+<p>显卡上的规约操作是一个经典优化案例。在网上能找到的大部分实现中，性能比较优秀的是使用 Shared Memory 并进行访存优化的树形规约。</p>
+
+<p>近期正好在做这方面的一些优化，同时了解到从 CUDA 9.0 开始，CUDA 引入了更加灵活的 Warp 操作原语，这一方面使得 CUDA 编程更加简单，一方面也使得一些原有的功能发生了一些改变。本文重点对 Warp 和 Shared Memory 两种方法实现的并行规约操作进行性能对比。</p>
+
+<h2 id="实验环境">实验环境</h2>
+
+<p>使用 v100 集群上一个结点的单张 v100 运行。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>nvdia-smi
+Mon Dec  2 08:38:49 2019
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 410.48                 Driver Version: 410.48                    |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|<span class="o">===============================</span>+<span class="o">======================</span>+<span class="o">======================</span>|
+|   0  Tesla V100-PCIE...  On   | 00000000:3B:00.0 Off |                    0 |
+| N/A   30C    P0    24W / 250W |      0MiB / 16130MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+
++-----------------------------------------------------------------------------+
+| Processes:                                                       GPU Memory |
+|  GPU       PID   Type   Process name                             Usage      |
+|<span class="o">=============================================================================</span>|
+|  No running processes found                                                 |
++-----------------------------------------------------------------------------+
+</code></pre></div></div>
+
+<h2 id="实验过程与分析">实验过程与分析</h2>
+
+<h3 id="前提条件">前提条件</h3>
+
+<p>为了简化代码，这里我使用 <code class="highlighter-rouge">&lt;thrust/device_vector.h&gt;</code> 库进行内存管理。虽然 <code class="highlighter-rouge">&lt;thrust&gt;</code> 库对底层代码做了更高级的抽象，但在本例中的开销却几乎可以忽略（已经和手动 <code class="highlighter-rouge">cudaMalloc</code> 的代码进行对比验证）。</p>
+
+<p>此外，在显卡上进行区间规约时，为了避免加读写锁或者原子操作，通常不直接把所有的结果归约到同一个内存地址。取而代之的，是使用多级规约，通过多次启动核函数，在几乎没有增加多少访存的前提下大大增加了线程的效率。然而，在这里我只是想对 Shared Memory 和 Warp Shuffle 访存的性能进行对比，而时间大头其实都在第一层规约上。二级之后的规约偷个懒用<code class="highlighter-rouge">thrust::reduce</code>代替之（其实应该多次启动自己的核函数，但是我太懒了）。由于二级及之后的规约时间其实是可以忽略不计的，因此在本例中是完全可行的。</p>
+
+<h3 id="使用-shared-memory">使用 Shared Memory</h3>
+
+<p>虽然不是文章重点，但我还是觉得有必要复习一下 Shared Memory 上进行 Reduce 的一些 Trick 操作。</p>
+
+<ul>
+  <li>使用<code class="highlighter-rouge">template</code>这是为了让接下来的循环<code class="highlighter-rouge">for (size_t offset = BLOCK_SIZE &gt;&gt; 1; offset &gt; 0; offset &gt;&gt;= 1)</code>可以被编译器自动展开优化。如果直接使用<code class="highlighter-rouge">blockDim.x</code>的话，既不能让编译器展开循环，也不能用作声明 <code class="highlighter-rouge">shared[]</code> 大小。</li>
+  <li>对 reduce 过程中的访存进行优化：<code class="highlighter-rouge">if (reduce_id &lt; offset) shared[threadIdx.x] += shared[threadIdx.x ^ offset];</code>，这里访存的时候相邻线程访问相邻的地址，也没有 conflict。（访存的原理图和下面 Warp 的那张很类似，这里就不放出了）</li>
+  <li>官方的代码还有一些比较给劲的优化策略（见文末的参考），如 Completely Unrolled、Multiple Adds。但是这些策略都比较暴力，且不是本文重点，不方便和 Warp 进行比较，我这里就没有做了。</li>
+</ul>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="kt">size_t</span> <span class="n">BLOCK_SIZE</span><span class="p">&gt;</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">shared_asum_kernel</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">unsigned</span> <span class="o">*</span><span class="n">src_d</span><span class="p">,</span>
+	<span class="kt">unsigned</span> <span class="o">*</span><span class="n">tmp_d</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span>
+		<span class="n">global_id</span> <span class="o">=</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+	<span class="kt">unsigned</span> <span class="n">__shared__</span> <span class="n">shared</span><span class="p">[</span><span class="n">BLOCK_SIZE</span><span class="p">];</span>
+	<span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">src_d</span><span class="p">[</span><span class="n">global_id</span><span class="p">];</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">BLOCK_SIZE</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;&gt;=</span> <span class="mi">1</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">__syncthreads</span><span class="p">();</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">offset</span><span class="p">)</span>
+			<span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">]</span> <span class="o">+=</span> <span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">^</span> <span class="n">offset</span><span class="p">];</span>
+	<span class="p">}</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="n">tmp_d</span><span class="p">[</span><span class="n">global_id</span> <span class="o">/</span> <span class="n">BLOCK_SIZE</span><span class="p">]</span> <span class="o">=</span> <span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">];</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>运行时间为<code class="highlighter-rouge">15.728032ms</code>。</p>
+
+<h3 id="使用-warp">使用 Warp</h3>
+
+<p>Warp 级别的操作原语（Warp-level Primitives）通过 shuffle 指令，允许 thread 直接读其他 thread 的寄存器值，只要两个 thread 在同一个 warp 中，这种比通过 shared Memory 进行 thread 间的通讯效果更好，latency 更低，同时也不消耗额外的内存资源来执行数据交换。可以看到，和使用 Shared Memory 的代码长得非常相似，只是<code class="highlighter-rouge">BLOCK_SIZE</code>换成了<code class="highlighter-rouge">WARP_SIZE</code>，<code class="highlighter-rouge">threadIdx.x</code>换成了<code class="highlighter-rouge">lane_id</code>。</p>
+
+<p><img src="https://devblogs.nvidia.com/wp-content/uploads/2018/01/reduce_shfl_down.png" alt="Part of a warp-level parallel reduction using shfl_down_sync()." /></p>
+
+<p>此外，我用<code class="highlighter-rouge">__shfl_xor_sync</code>而不是<code class="highlighter-rouge">__shfl_down_sync</code>，这样实现的不仅仅是树形规约，还是一个蝶形规约！并且通信步数并没有增加~</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="kt">size_t</span> <span class="n">WARP_SIZE</span><span class="p">&gt;</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">warp_asum_kernel</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">unsigned</span> <span class="o">*</span><span class="n">src_d</span><span class="p">,</span>
+	<span class="kt">unsigned</span> <span class="o">*</span><span class="n">tmp_d</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span>
+		<span class="n">global_id</span> <span class="o">=</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="p">,</span>
+		<span class="n">lane_id</span> <span class="o">=</span> <span class="n">global_id</span> <span class="o">%</span> <span class="n">WARP_SIZE</span><span class="p">;</span>
+	<span class="kt">unsigned</span>
+		<span class="n">val</span> <span class="o">=</span> <span class="n">global_id</span> <span class="o">&lt;</span> <span class="n">n</span> <span class="o">?</span> <span class="n">src_d</span><span class="p">[</span><span class="n">global_id</span><span class="p">]</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">WARP_SIZE</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;&gt;=</span> <span class="mi">1</span><span class="p">)</span>
+		<span class="n">val</span> <span class="o">+=</span> <span class="n">__shfl_xor_sync</span><span class="p">(</span><span class="mh">0xffffffff</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">WARP_SIZE</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">lane_id</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="n">tmp_d</span><span class="p">[</span><span class="n">global_id</span> <span class="o">/</span> <span class="n">WARP_SIZE</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>运行时间达到了<code class="highlighter-rouge">7.712928ms</code>，轻松提高了一倍多的计算性能！同时也不难发现，使用 Warp 操作原语的代码更简洁，同时也移除了对 Shared Memory 的依赖，可以说是非常棒了！</p>
+
+<h2 id="源代码与运行结果">源代码与运行结果</h2>
+
+<h3 id="asumpbs"><code class="highlighter-rouge">asum.pbs</code></h3>
+
+<p>调度脚本。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#PBS -N Dasum</span>
+<span class="c">#PBS -l nodes=1:ppn=32:gpus=1</span>
+<span class="c">#PBS -j oe</span>
+<span class="c">#PBS -q gpu</span>
+<span class="nb">source</span> /public/software/profile.d/cuda10.0.sh
+<span class="nb">cd</span> <span class="nv">$PBS_O_WORKDIR</span>
+nvcc asum.cu <span class="nt">-run</span>
+</code></pre></div></div>
+
+<h3 id="asumo18854"><code class="highlighter-rouge">asum.o18854</code></h3>
+
+<p>运行结果。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>1073741824 : 5.524512ms elapsed.
+1073741824 : 15.728032ms elapsed.
+1073741824 : 7.712928ms elapsed.
+</code></pre></div></div>
+
+<p>第一行是使用 <code class="highlighter-rouge">thrust::reduce</code> 库的结果，作为两种优化方案的标杆。可以看到，<code class="highlighter-rouge">thrust</code> 库能够号称“Code at the speed of light”，还是做了很多优化的。</p>
+
+<h3 id="asumcu"><code class="highlighter-rouge">asum.cu</code></h3>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;cuda_runtime.h&gt;
+#include &lt;thrust/device_vector.h&gt;
+#include &lt;thrust/reduce.h&gt;
+</span><span class="k">template</span> <span class="o">&lt;</span><span class="kt">size_t</span> <span class="n">BLOCK_SIZE</span><span class="p">&gt;</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">shared_asum_kernel</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">unsigned</span> <span class="o">*</span><span class="n">src_d</span><span class="p">,</span>
+	<span class="kt">unsigned</span> <span class="o">*</span><span class="n">tmp_d</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span>
+		<span class="n">global_id</span> <span class="o">=</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+	<span class="kt">unsigned</span> <span class="n">__shared__</span> <span class="n">shared</span><span class="p">[</span><span class="n">BLOCK_SIZE</span><span class="p">];</span>
+	<span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">src_d</span><span class="p">[</span><span class="n">global_id</span><span class="p">];</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">BLOCK_SIZE</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;&gt;=</span> <span class="mi">1</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">__syncthreads</span><span class="p">();</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">offset</span><span class="p">)</span>
+			<span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">]</span> <span class="o">+=</span> <span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">^</span> <span class="n">offset</span><span class="p">];</span>
+	<span class="p">}</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="n">tmp_d</span><span class="p">[</span><span class="n">global_id</span> <span class="o">/</span> <span class="n">BLOCK_SIZE</span><span class="p">]</span> <span class="o">=</span> <span class="n">shared</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">];</span>
+<span class="p">}</span>
+<span class="k">template</span> <span class="o">&lt;</span><span class="kt">size_t</span> <span class="n">WARP_SIZE</span><span class="p">&gt;</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">warp_asum_kernel</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">unsigned</span> <span class="o">*</span><span class="n">src_d</span><span class="p">,</span>
+	<span class="kt">unsigned</span> <span class="o">*</span><span class="n">tmp_d</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span>
+		<span class="n">global_id</span> <span class="o">=</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="p">,</span>
+		<span class="n">lane_id</span> <span class="o">=</span> <span class="n">global_id</span> <span class="o">%</span> <span class="n">WARP_SIZE</span><span class="p">;</span>
+	<span class="kt">unsigned</span>
+		<span class="n">val</span> <span class="o">=</span> <span class="n">global_id</span> <span class="o">&lt;</span> <span class="n">n</span> <span class="o">?</span> <span class="n">src_d</span><span class="p">[</span><span class="n">global_id</span><span class="p">]</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">WARP_SIZE</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">;</span> <span class="n">offset</span> <span class="o">&gt;&gt;=</span> <span class="mi">1</span><span class="p">)</span>
+		<span class="n">val</span> <span class="o">+=</span> <span class="n">__shfl_xor_sync</span><span class="p">(</span><span class="mh">0xffffffff</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">WARP_SIZE</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">lane_id</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="n">tmp_d</span><span class="p">[</span><span class="n">global_id</span> <span class="o">/</span> <span class="n">WARP_SIZE</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span>
+		<span class="n">n</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">30</span><span class="p">,</span>
+		<span class="n">BLOCK_SIZE</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">10</span><span class="p">,</span>
+		<span class="n">WARP_SIZE</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">5</span><span class="p">,</span>
+		<span class="n">REDUCE_SIZE</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">WARP_SIZE</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">WARP_SIZE</span><span class="p">;</span>
+	<span class="n">thrust</span><span class="o">::</span><span class="n">device_vector</span><span class="o">&lt;</span><span class="kt">unsigned</span><span class="o">&gt;</span> <span class="n">src</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">tmp</span><span class="p">(</span><span class="n">REDUCE_SIZE</span><span class="p">);</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">op</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">op</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">;</span> <span class="o">++</span><span class="n">op</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="kt">unsigned</span> <span class="n">sum</span><span class="p">;</span>
+		<span class="n">cudaEvent_t</span> <span class="n">beg</span><span class="p">,</span> <span class="n">end</span><span class="p">;</span>
+		<span class="n">cudaEventCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">beg</span><span class="p">);</span>
+		<span class="n">cudaEventCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">end</span><span class="p">);</span>
+		<span class="n">cudaEventRecord</span><span class="p">(</span><span class="n">beg</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">op</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+			<span class="n">sum</span> <span class="o">=</span> <span class="n">thrust</span><span class="o">::</span><span class="n">reduce</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">src</span><span class="p">.</span><span class="n">begin</span><span class="p">()</span> <span class="o">+</span> <span class="n">n</span><span class="p">);</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">op</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+		<span class="p">{</span>
+			<span class="n">shared_asum_kernel</span><span class="o">&lt;</span>
+				<span class="n">BLOCK_SIZE</span><span class="o">&gt;&lt;&lt;&lt;</span>
+				<span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">BLOCK_SIZE</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">BLOCK_SIZE</span><span class="p">,</span>
+				<span class="n">BLOCK_SIZE</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
+				<span class="n">n</span><span class="p">,</span>
+				<span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+				<span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">tmp</span><span class="p">.</span><span class="n">data</span><span class="p">()));</span>
+			<span class="n">sum</span> <span class="o">=</span> <span class="n">thrust</span><span class="o">::</span><span class="n">reduce</span><span class="p">(</span><span class="n">tmp</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">tmp</span><span class="p">.</span><span class="n">begin</span><span class="p">()</span> <span class="o">+</span> <span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">BLOCK_SIZE</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">BLOCK_SIZE</span><span class="p">);</span>
+		<span class="p">}</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">op</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span>
+		<span class="p">{</span>
+			<span class="n">warp_asum_kernel</span><span class="o">&lt;</span>
+				<span class="n">WARP_SIZE</span><span class="o">&gt;&lt;&lt;&lt;</span>
+				<span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">BLOCK_SIZE</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">BLOCK_SIZE</span><span class="p">,</span>
+				<span class="n">BLOCK_SIZE</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
+				<span class="n">n</span><span class="p">,</span>
+				<span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">src</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+				<span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">tmp</span><span class="p">.</span><span class="n">data</span><span class="p">()));</span>
+			<span class="n">sum</span> <span class="o">=</span> <span class="n">thrust</span><span class="o">::</span><span class="n">reduce</span><span class="p">(</span><span class="n">tmp</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">tmp</span><span class="p">.</span><span class="n">begin</span><span class="p">()</span> <span class="o">+</span> <span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">WARP_SIZE</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">WARP_SIZE</span><span class="p">);</span>
+		<span class="p">}</span>
+		<span class="n">cudaEventRecord</span><span class="p">(</span><span class="n">end</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+		<span class="n">cudaEventSynchronize</span><span class="p">(</span><span class="n">beg</span><span class="p">);</span>
+		<span class="n">cudaEventSynchronize</span><span class="p">(</span><span class="n">end</span><span class="p">);</span>
+		<span class="kt">float</span> <span class="n">elapsed_time</span><span class="p">;</span>
+		<span class="n">cudaEventElapsedTime</span><span class="p">(</span>
+			<span class="o">&amp;</span><span class="n">elapsed_time</span><span class="p">,</span>
+			<span class="n">beg</span><span class="p">,</span>
+			<span class="n">end</span><span class="p">);</span>
+		<span class="n">printf</span><span class="p">(</span><span class="s">"%u : %fms elapsed.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">sum</span><span class="p">,</span> <span class="n">elapsed_time</span><span class="p">);</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="参考资料">参考资料</h2>
+
+<ul>
+  <li><a href="https://devblogs.nvidia.com/using-cuda-warp-level-primitives/">Using CUDA Warp-Level Primitives | NVIDIA Developer Blog</a></li>
+  <li><a href="https://developer.download.nvidia.cn/assets/cuda/files/reduction.pdf">Optimizing Parallel Reduction in CUDA | NVIDIA Developer Technology</a></li>
+</ul>
+:ET

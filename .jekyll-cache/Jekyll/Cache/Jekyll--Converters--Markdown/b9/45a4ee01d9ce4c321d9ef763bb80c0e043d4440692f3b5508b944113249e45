@@ -1,0 +1,393 @@
+I"��<h2 id="简介">简介</h2>
+
+<p>近期在做一个 CUDA 相关库的优化，发现稍作一点修改（下文中 <code class="highlighter-rouge">simpleZcopy</code> 到 <code class="highlighter-rouge">naiveZcopy</code> 的修改）后就让运行时间在 16 秒左右的仿真过程快了将近 1 秒。猜想这个优化方法可能是非常通用的，于是单独做一次实验来验证猜想。</p>
+
+<p>本文在显卡上双精度复数拷贝的场景进行试验，同时和一些常见的高性能拷贝 API 做性能对比。</p>
+
+<h2 id="实验环境">实验环境</h2>
+
+<p>使用 v100 集群上一个结点的单张 v100 运行。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>nvdia-smi
+Mon Dec  2 08:38:49 2019
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 410.48                 Driver Version: 410.48                    |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|<span class="o">===============================</span>+<span class="o">======================</span>+<span class="o">======================</span>|
+|   0  Tesla V100-PCIE...  On   | 00000000:3B:00.0 Off |                    0 |
+| N/A   30C    P0    24W / 250W |      0MiB / 16130MiB |      0%      Default |
++-------------------------------+----------------------+----------------------+
+
++-----------------------------------------------------------------------------+
+| Processes:                                                       GPU Memory |
+|  GPU       PID   Type   Process name                             Usage      |
+|<span class="o">=============================================================================</span>|
+|  No running processes found                                                 |
++-----------------------------------------------------------------------------+
+</code></pre></div></div>
+
+<h2 id="实验过程与分析">实验过程与分析</h2>
+
+<h3 id="一些说明">一些说明</h3>
+
+<h4 id="内存管理">内存管理</h4>
+
+<p>我使用的显卡是 Tesla V100，单卡显存为 16130MiB。为简化代码，我用 <code class="highlighter-rouge">&lt;thrust/device_vector.h&gt;</code> 库创建了四个大小为$2^{28}$的向量用于双精度复数输入和输出。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">const</span> <span class="kt">size_t</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">28</span><span class="p">;</span>
+<span class="n">thrust</span><span class="o">::</span><span class="n">device_vector</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span>
+    <span class="n">real_in</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+    <span class="n">imag_in</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+    <span class="n">real_out</span><span class="p">(</span><span class="n">n</span><span class="p">),</span>
+    <span class="n">imag_out</span><span class="p">(</span><span class="n">n</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>和 <code class="highlighter-rouge">cudaMalloc</code> 分配的显存空间相比，<code class="highlighter-rouge">thrust::device_vector&lt;double&gt;</code> 的开销在本例中可以忽略。</p>
+
+<h4 id="计时方式">计时方式</h4>
+
+<p>为简化代码，写了这样一个结构体用于各部分的计时，离开代码块的时候自动输出运行时间。通过调用 <code class="highlighter-rouge">cudaEventElapsedTime</code> 实现线程安全的计时。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">WuKTimer</span>
+<span class="p">{</span>
+    <span class="n">cudaEvent_t</span> <span class="n">beg</span><span class="p">,</span> <span class="n">end</span><span class="p">;</span>
+    <span class="n">WuKTimer</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="n">cudaEventCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">beg</span><span class="p">);</span>
+        <span class="n">cudaEventCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">end</span><span class="p">);</span>
+        <span class="n">cudaEventRecord</span><span class="p">(</span><span class="n">beg</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="o">~</span><span class="n">WuKTimer</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="n">cudaEventRecord</span><span class="p">(</span><span class="n">end</span><span class="p">);</span>
+        <span class="n">cudaEventSynchronize</span><span class="p">(</span><span class="n">beg</span><span class="p">);</span>
+        <span class="n">cudaEventSynchronize</span><span class="p">(</span><span class="n">end</span><span class="p">);</span>
+        <span class="kt">float</span> <span class="n">elapsed_time</span><span class="p">;</span>
+        <span class="n">cudaEventElapsedTime</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="n">elapsed_time</span><span class="p">,</span>
+            <span class="n">beg</span><span class="p">,</span>
+            <span class="n">end</span><span class="p">);</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%f</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">elapsed_time</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<h4 id="cudaoccupancymaxpotentialblocksize"><code class="highlighter-rouge">cudaOccupancyMaxPotentialBlockSize</code></h4>
+
+<p>从 CUDA 6.5 开始，提供了一个很有用的函数 <code class="highlighter-rouge">cudaOccupancyMaxPotentialBlockSize</code>，该函数定义在 <code class="highlighter-rouge">&lt;cuda_runtime.h&gt;</code>，接口及含义见下面的注释。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">T</span><span class="p">&gt;</span>
+<span class="n">cudaError_t</span> <span class="n">__inline__</span> <span class="n">__host__</span> <span class="n">CUDART_DEVICE</span>
+<span class="nf">cudaOccupancyMaxPotentialBlockSize</span><span class="p">(</span>
+    <span class="kt">int</span> <span class="o">*</span><span class="n">minGridSize</span><span class="p">,</span>           <span class="c1">// Suggested min grid size to achieve a full machine launch.</span>
+    <span class="kt">int</span> <span class="o">*</span><span class="n">blockSize</span><span class="p">,</span>             <span class="c1">// Suggested block size to achieve maximum occupancy.</span>
+    <span class="n">T</span> <span class="n">func</span><span class="p">,</span>                     <span class="c1">// Kernel function.</span>
+    <span class="kt">size_t</span> <span class="n">dynamicSMemSize</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="c1">//Size of dynamically allocated shared memory. Of course, it is known at runtime before any kernel launch. The size of the statically allocated shared memory is not needed as it is inferred by the properties of func.</span>
+    <span class="kt">int</span> <span class="n">blockSizeLimit</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>     <span class="c1">//blockSizeLimit  = Maximum size for each block. In the case of 1D kernels, it can coincide with the number of input elements.</span>
+<span class="p">{</span>
+    <span class="k">return</span> <span class="n">cudaOccupancyMaxPotentialBlockSizeVariableSMem</span><span class="p">(</span><span class="n">minGridSize</span><span class="p">,</span> <span class="n">blockSize</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">__cudaOccupancyB2DHelper</span><span class="p">(</span><span class="n">dynamicSMemSize</span><span class="p">),</span> <span class="n">blockSizeLimit</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>通过这个接口可以获得在 SM 占用率最大时 <code class="highlighter-rouge">blockDim</code> 和对应的最小 <code class="highlighter-rouge">gridDim</code> ，这样就可以不去关心各种硬件资源的限制写出低开销的调用，同时也省去了自己调参数的过程。</p>
+
+<p>唯一遗憾的是，这个函数获得的值是在运行时而非编译时确定的。也就是说，有时候需要通过 template 参数传 BlockDim 的大小来让编译器做一些优化时（如循环展开，再比如 Shared Memory 的大小），要通过<code class="highlighter-rouge">switch</code>语句，略显繁琐。</p>
+
+<h3 id="simplezcopy"><code class="highlighter-rouge">simpleZcopy</code></h3>
+
+<p>先来做最基础的算法优化版本。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="n">__global__</span> <span class="nf">simpleZcopy</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">+=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">gridDim</span><span class="p">.</span><span class="n">x</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+		<span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>运行时间为 12.118016ms。</p>
+
+<h3 id="naivezcopy"><code class="highlighter-rouge">naiveZcopy</code></h3>
+
+<p>在 <code class="highlighter-rouge">simpleZcopy</code> 基础上，把读操作和写操作分离开。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="n">__global__</span> <span class="nf">naiveZcopy</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">+=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">gridDim</span><span class="p">.</span><span class="n">x</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="k">const</span> <span class="kt">double</span>
+			<span class="n">real</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+			<span class="n">imag</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+		<span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real</span><span class="p">;</span>
+		<span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag</span><span class="p">;</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>运行时间为 12.254208ms。</p>
+
+<h3 id="cudamemcpy"><code class="highlighter-rouge">cudaMemcpy</code></h3>
+
+<p>直接使用 cuda 提供的内存拷贝接口实现，分别拷贝实部和虚部。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">cudaMemcpy</span><span class="p">(</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="k">sizeof</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">,</span>
+    <span class="n">cudaMemcpyDeviceToDevice</span><span class="p">);</span>
+<span class="n">cudaMemcpy</span><span class="p">(</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="k">sizeof</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">,</span>
+    <span class="n">cudaMemcpyDeviceToDevice</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>运行时间为 11.898560ms。</p>
+
+<h3 id="cublasdcopy"><code class="highlighter-rouge">cublasDcopy</code></h3>
+
+<p>使用 cublas 库中提供的第一级向量操作接口实现。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">cublasDcopy</span><span class="p">(</span>
+    <span class="n">wk_cublas_handle</span><span class="p">,</span>
+    <span class="n">n</span><span class="p">,</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="mi">1</span><span class="p">,</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="mi">1</span><span class="p">);</span>
+<span class="n">cublasDcopy</span><span class="p">(</span>
+    <span class="n">wk_cublas_handle</span><span class="p">,</span>
+    <span class="n">n</span><span class="p">,</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="mi">1</span><span class="p">,</span>
+    <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+    <span class="mi">1</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>运行时间为 12.208064ms，更慢了。</p>
+
+<h3 id="thrustcopy"><code class="highlighter-rouge">thrust::copy</code></h3>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">thrust</span><span class="o">::</span><span class="n">copy</span><span class="p">(</span>
+    <span class="n">real_in</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span>
+    <span class="n">real_in</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span>
+    <span class="n">real_out</span><span class="p">.</span><span class="n">begin</span><span class="p">());</span>
+<span class="n">thrust</span><span class="o">::</span><span class="n">copy</span><span class="p">(</span>
+    <span class="n">imag_in</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span>
+    <span class="n">imag_in</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span>
+    <span class="n">imag_out</span><span class="p">.</span><span class="n">begin</span><span class="p">());</span>
+</code></pre></div></div>
+
+<p>运行时间 11.536608ms。</p>
+
+<h3 id="thrustdevice_vectordoubleoperator"><code class="highlighter-rouge">thrust::device_vector&lt;double&gt;::operator=</code></h3>
+
+<p>我们是使用 <code class="highlighter-rouge">thrust::device_vector&lt;double&gt;</code> 进行内存管理的，我们也可以直接调用它的拷贝赋值函数。</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">real_out</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">;</span>
+<span class="n">imag_out</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>运行时间 11.528096ms，和前一个差不多。</p>
+
+<h2 id="源代码">源代码</h2>
+
+<h3 id="zcopypbs"><code class="highlighter-rouge">Zcopy.pbs</code></h3>
+
+<p>调度脚本。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#PBS -N Zcopy</span>
+<span class="c">#PBS -l nodes=1:ppn=32:gpus=1</span>
+<span class="c">#PBS -j oe</span>
+<span class="c">#PBS -q gpu</span>
+<span class="nb">source</span> /public/software/profile.d/cuda10.0.sh
+<span class="nb">cd</span> <span class="nv">$PBS_O_WORKDIR</span>
+nvcc Zcopy.cu <span class="nt">-run</span> <span class="nt">-lcublas</span>
+</code></pre></div></div>
+
+<h3 id="zcopyo18921"><code class="highlighter-rouge">Zcopy.o18921</code></h3>
+
+<p>运行结果，自上而下分别是 <code class="highlighter-rouge">simpleZcopy</code>、<code class="highlighter-rouge">naiveZcopy</code>、<code class="highlighter-rouge">cudaMemcpy</code>、<code class="highlighter-rouge">cublasDcopy</code>、<code class="highlighter-rouge">thrust::copy</code>、<code class="highlighter-rouge">thrust::device_vector&lt;double&gt;::operator=</code> 的运行时间。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>12.118016
+12.254208
+11.898560
+12.208064
+11.536608
+11.528096
+</code></pre></div></div>
+
+<h3 id="zcopycu"><code class="highlighter-rouge">Zcopy.cu</code></h3>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;cuda_runtime.h&gt;
+#include &lt;thrust/device_vector.h&gt;
+#include &lt;thrust/copy.h&gt;
+#include &lt;cublas_v2.h&gt;
+</span><span class="kt">void</span> <span class="n">__global__</span> <span class="nf">simpleZcopy</span><span class="p">(</span>
+    <span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+    <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+    <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+    <span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+    <span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+         <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span>
+         <span class="n">i</span> <span class="o">+=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">gridDim</span><span class="p">.</span><span class="n">x</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">naiveZcopy</span><span class="p">(</span>
+    <span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+    <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+    <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+    <span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+    <span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+         <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span>
+         <span class="n">i</span> <span class="o">+=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">gridDim</span><span class="p">.</span><span class="n">x</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">const</span> <span class="kt">double</span>
+            <span class="n">real</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+            <span class="n">imag</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real</span><span class="p">;</span>
+        <span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="k">struct</span> <span class="nc">WuKTimer</span>
+<span class="p">{</span>
+    <span class="n">cudaEvent_t</span> <span class="n">beg</span><span class="p">,</span> <span class="n">end</span><span class="p">;</span>
+    <span class="n">WuKTimer</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="n">cudaEventCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">beg</span><span class="p">);</span>
+        <span class="n">cudaEventCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">end</span><span class="p">);</span>
+        <span class="n">cudaEventRecord</span><span class="p">(</span><span class="n">beg</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="o">~</span><span class="n">WuKTimer</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="n">cudaEventRecord</span><span class="p">(</span><span class="n">end</span><span class="p">);</span>
+        <span class="n">cudaEventSynchronize</span><span class="p">(</span><span class="n">beg</span><span class="p">);</span>
+        <span class="n">cudaEventSynchronize</span><span class="p">(</span><span class="n">end</span><span class="p">);</span>
+        <span class="kt">float</span> <span class="n">elapsed_time</span><span class="p">;</span>
+        <span class="n">cudaEventElapsedTime</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="n">elapsed_time</span><span class="p">,</span>
+            <span class="n">beg</span><span class="p">,</span>
+            <span class="n">end</span><span class="p">);</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%f</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">elapsed_time</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+<span class="k">const</span> <span class="kt">size_t</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">28</span><span class="p">;</span>
+<span class="n">thrust</span><span class="o">::</span><span class="n">device_vector</span><span class="o">&lt;</span><span class="kt">double</span><span class="o">&gt;</span>
+    <span class="n">real_in</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+    <span class="n">imag_in</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+    <span class="n">real_out</span><span class="p">(</span><span class="n">n</span><span class="p">),</span>
+    <span class="n">imag_out</span><span class="p">(</span><span class="n">n</span><span class="p">);</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="p">{</span>
+        <span class="n">WuKTimer</span> <span class="n">wk_timer</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">minGridSize</span><span class="p">,</span> <span class="n">blockSize</span><span class="p">;</span>
+        <span class="n">cudaOccupancyMaxPotentialBlockSize</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="n">minGridSize</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="n">blockSize</span><span class="p">,</span>
+            <span class="n">simpleZcopy</span><span class="p">);</span>
+        <span class="n">simpleZcopy</span><span class="o">&lt;&lt;&lt;</span>
+            <span class="n">minGridSize</span><span class="p">,</span>
+            <span class="n">blockSize</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
+            <span class="n">n</span><span class="p">,</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_out</span><span class="p">.</span><span class="n">data</span><span class="p">()));</span>
+    <span class="p">}</span>
+    <span class="p">{</span>
+        <span class="n">WuKTimer</span> <span class="n">wk_timer</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">minGridSize</span><span class="p">,</span> <span class="n">blockSize</span><span class="p">;</span>
+        <span class="n">cudaOccupancyMaxPotentialBlockSize</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="n">minGridSize</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="n">blockSize</span><span class="p">,</span>
+            <span class="n">naiveZcopy</span><span class="p">);</span>
+        <span class="n">naiveZcopy</span><span class="o">&lt;&lt;&lt;</span>
+            <span class="n">minGridSize</span><span class="p">,</span>
+            <span class="n">blockSize</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
+            <span class="n">n</span><span class="p">,</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_out</span><span class="p">.</span><span class="n">data</span><span class="p">()));</span>
+    <span class="p">}</span>
+    <span class="p">{</span>
+        <span class="n">WuKTimer</span> <span class="n">wk_timer</span><span class="p">;</span>
+        <span class="n">cudaMemcpy</span><span class="p">(</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="k">sizeof</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">,</span>
+            <span class="n">cudaMemcpyDeviceToDevice</span><span class="p">);</span>
+        <span class="n">cudaMemcpy</span><span class="p">(</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="k">sizeof</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">,</span>
+            <span class="n">cudaMemcpyDeviceToDevice</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">cublasHandle_t</span> <span class="n">wk_cublas_handle</span><span class="p">;</span>
+    <span class="n">cublasCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">wk_cublas_handle</span><span class="p">);</span>
+    <span class="p">{</span>
+        <span class="n">WuKTimer</span> <span class="n">wk_timer</span><span class="p">;</span>
+        <span class="n">cublasDcopy</span><span class="p">(</span>
+            <span class="n">wk_cublas_handle</span><span class="p">,</span>
+            <span class="n">n</span><span class="p">,</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="mi">1</span><span class="p">,</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">real_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="mi">1</span><span class="p">);</span>
+        <span class="n">cublasDcopy</span><span class="p">(</span>
+            <span class="n">wk_cublas_handle</span><span class="p">,</span>
+            <span class="n">n</span><span class="p">,</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_in</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="mi">1</span><span class="p">,</span>
+            <span class="n">thrust</span><span class="o">::</span><span class="n">raw_pointer_cast</span><span class="p">(</span><span class="n">imag_out</span><span class="p">.</span><span class="n">data</span><span class="p">()),</span>
+            <span class="mi">1</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">cublasDestroy</span><span class="p">(</span><span class="n">wk_cublas_handle</span><span class="p">);</span>
+    <span class="p">{</span>
+        <span class="n">WuKTimer</span> <span class="n">wk_timer</span><span class="p">;</span>
+        <span class="n">thrust</span><span class="o">::</span><span class="n">copy</span><span class="p">(</span>
+            <span class="n">real_in</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span>
+            <span class="n">real_in</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span>
+            <span class="n">real_out</span><span class="p">.</span><span class="n">begin</span><span class="p">());</span>
+        <span class="n">thrust</span><span class="o">::</span><span class="n">copy</span><span class="p">(</span>
+            <span class="n">imag_in</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span>
+            <span class="n">imag_in</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span>
+            <span class="n">imag_out</span><span class="p">.</span><span class="n">begin</span><span class="p">());</span>
+    <span class="p">}</span>
+    <span class="p">{</span>
+        <span class="n">WuKTimer</span> <span class="n">wk_timer</span><span class="p">;</span>
+        <span class="n">real_out</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">;</span>
+        <span class="n">imag_out</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+:ET

@@ -1,0 +1,539 @@
+I"��<h2 id="实验题目">实验题目</h2>
+
+<p>中断控制</p>
+
+<h2 id="实验目的">实验目的</h2>
+
+<ul>
+  <li>学习中断机制知识，掌握中断处理程序设计的要求</li>
+  <li>设计一个汇编程序，实现时钟中断处理程序</li>
+  <li>扩展 MyOS2，增加时钟中断服务，利用时钟中断实现与时间有关的操作</li>
+</ul>
+
+<h2 id="实验要求">实验要求</h2>
+
+<ul>
+  <li>操作系统工作期间，利用时钟中断，在屏幕 24 行 79 列位置轮流显示<code class="highlighter-rouge">|</code>、<code class="highlighter-rouge">/</code>和<code class="highlighter-rouge">\</code>，适当控制显示速度，以方便观察效果。</li>
+  <li>编写键盘中断响应程序，原有的你设计的用户程序运行时，键盘事件会做出有事反应：当键盘有按键时，屏幕适当位置显示<code class="highlighter-rouge">OUCH!OUCH!</code>。</li>
+  <li>在内核中，对 33 号、34 号、35 号和 36 号中断编写中断服务程序，分别在屏幕 1/4 区域内显示一些个性化信息。再编写一个汇编语言的程序，作为用户程序，利用<code class="highlighter-rouge">int 33</code>、<code class="highlighter-rouge">int 34</code>、<code class="highlighter-rouge">int 35</code>和<code class="highlighter-rouge">int 36</code>产生中断调用你这 4 个服务程序。</li>
+</ul>
+
+<h2 id="实验方案">实验方案</h2>
+
+<h3 id="实验环境">实验环境</h3>
+
+<h4 id="软件">软件</h4>
+
+<ul>
+  <li>Windows 10, 64-bit (Build 17763) 10.0.17763</li>
+  <li>Windows Subsystem for Linux [Ubuntu 18.04.2 LTS]：WSL 是以软件的形式运行在 Windows 下的 Linux 子系统，是近些年微软推出来的新工具，可以在 Windows 系统上原生运行 Linux。</li>
+  <li>gcc version 7.3.0 (Ubuntu 7.3.0-27ubuntu1~18.04)：C 语言程序编译器，Ubuntu 自带。</li>
+  <li>NASM version 2.13.02：汇编程序编译器，通过<code class="highlighter-rouge">sudo apt install nasm</code>安装在 WSL 上。</li>
+  <li>Oracle VM VirtualBox 6.0.4 r128413 (Qt5.6.2)：轻量开源的虚拟机软件。</li>
+  <li>VSCode - Insiders v1.33.0：好用的文本编辑器，有丰富的插件。</li>
+  <li>hexdump for VSCode 1.7.2: VSCode 中一个好用的十六进制显示插件。</li>
+  <li>GNU Make 4.1：安装在 Ubuntu 下，一键编译并连接代码，生成最终的文件。</li>
+</ul>
+
+<p>大部分开发环境安装在 WSL 上，较之于双系统、虚拟机等其他开发方案，更加方便，也方便直接使用 Linux 下的一些指令。</p>
+
+<h4 id="硬件">硬件</h4>
+
+<h5 id="开发环境配置">开发环境配置</h5>
+
+<p>所用机器型号为 VAIO Z Flip 2016</p>
+
+<ul>
+  <li>Intel(R) Core(TM) i7-6567U CPU @3.30GHZ 3.31GHz</li>
+  <li>8.00GB RAM</li>
+</ul>
+
+<h5 id="虚拟机配置">虚拟机配置</h5>
+
+<ul>
+  <li>处理器内核总数：1</li>
+  <li>RAM：4MB</li>
+</ul>
+
+<h3 id="实验原理">实验原理</h3>
+
+<p>本次实验的关键在于写中断向量表。x86 计算机在启动时会自动进入实模式状态。系统的 BIOS 初始化<code class="highlighter-rouge">8259A</code>的各中断线的类型（参见前图），在内存的低位区（地址为<code class="highlighter-rouge">0~1023[3FFH]</code>，1KB）创建含 256 个中断向量的表 IVT （每个<code class="highlighter-rouge">向量[地址]</code>占 4 个字节，格式为：<code class="highlighter-rouge">16位段值:16位偏移值</code>）。</p>
+
+<p>要实现“无敌风火轮”，可以利用时钟中断，对 8 号中断进行编程。在屏幕固定位置显示风火轮的字符，随后将字符修改为下一个。随后将 0x08 放入 0x20 的位置，处理时钟中断函数的入口放入 0x22。最后需要告诉硬件端口已经处理完中断，并正常返回。</p>
+
+<p>在实验过程中，还遇到了进入操作系统时显示风火轮但是没有转起来的问题。经过思考，发现<a href="https://wu-kan.cn/_posts/2019-03-28-用汇编与C语言开发独立内核/">上一个实验</a>中写的<code class="highlighter-rouge">getch</code>是阻塞函数。于是，重新写了这个函数，重复扫描键盘缓冲区，有字符键入时再读进来。</p>
+
+<h2 id="实验过程">实验过程</h2>
+
+<h3 id="实验代码">实验代码</h3>
+
+<h4 id="bootloaderasm">bootloader.asm</h4>
+
+<p>和<a href="https://wu-kan.cn/_posts/2019-03-28-用汇编与C语言开发独立内核/">上一个实验</a>中的代码完全相同，不再放出。</p>
+
+<h4 id="kernelasm">kernel.asm</h4>
+
+<p>操作系统内核的汇编部分代码，提供<code class="highlighter-rouge">int 33</code>~<code class="highlighter-rouge">int 36</code>中断在屏幕的四个象限上显示自定义信息，检测到<code class="highlighter-rouge">Ctrl + C</code>时返回。</p>
+
+<p>同时，提供了如下的全局函数供 C 语言部分调用。</p>
+
+<ul>
+  <li><code class="highlighter-rouge">_getch</code>从屏幕上无回显地读入一个字符。</li>
+  <li><code class="highlighter-rouge">_getCursor</code>返回屏幕光标的位置。</li>
+  <li><code class="highlighter-rouge">_setCursor</code>设置屏幕光标的位置。</li>
+  <li><code class="highlighter-rouge">_putC</code>向光标位置写入一个字符。</li>
+  <li><code class="highlighter-rouge">_pageUP</code>屏幕内容向上滚动。</li>
+  <li><code class="highlighter-rouge">_loadProgram</code>加载用户程序。</li>
+</ul>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">%macro print 5 </span><span class="c1">; string, length, x, y, color
+</span>	<span class="nf">pusha</span>
+	<span class="nf">push</span> <span class="nb">ax</span>
+	<span class="nf">push</span> <span class="nb">bx</span>
+	<span class="nf">push</span> <span class="nb">cx</span>
+	<span class="nf">push</span> <span class="nb">dx</span>
+	<span class="nf">push</span> <span class="nb">bp</span>
+	<span class="nf">push</span> <span class="nb">ds</span>
+	<span class="nf">push</span> <span class="nb">es</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="mh">0b800H</span>
+	<span class="nf">mov</span> <span class="nb">gs</span><span class="p">,</span> <span class="nb">ax</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="nb">cs</span>
+	<span class="nf">mov</span> <span class="nb">ds</span><span class="p">,</span> <span class="nb">ax</span>
+	<span class="nf">mov</span> <span class="nb">bp</span><span class="p">,</span> <span class="o">%</span><span class="mi">1</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="nb">ds</span>
+	<span class="nf">mov</span> <span class="nb">es</span><span class="p">,</span> <span class="nb">ax</span>
+	<span class="nf">mov</span> <span class="nb">cx</span><span class="p">,</span> <span class="o">%</span><span class="mi">2</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="mh">1300H</span>
+	<span class="nf">mov</span> <span class="nb">dh</span><span class="p">,</span> <span class="o">%</span><span class="mi">3</span>
+	<span class="nf">mov</span> <span class="nb">dl</span><span class="p">,</span> <span class="o">%</span><span class="mi">4</span>
+	<span class="nf">mov</span> <span class="nb">bx</span><span class="p">,</span> <span class="o">%</span><span class="mi">5</span>
+	<span class="nf">int</span> <span class="mh">10H</span>
+	<span class="nf">pop</span> <span class="nb">es</span>
+	<span class="nf">pop</span> <span class="nb">ds</span>
+	<span class="nf">pop</span> <span class="nb">bp</span>
+	<span class="nf">pop</span> <span class="nb">dx</span>
+	<span class="nf">pop</span> <span class="nb">cx</span>
+	<span class="nf">pop</span> <span class="nb">bx</span>
+	<span class="nf">pop</span> <span class="nb">ax</span>
+	<span class="nf">popa</span>
+<span class="cp">%endmacro
+%macro setIVT 2
+</span>	<span class="nf">push</span> <span class="nb">es</span>
+	<span class="nf">push</span> <span class="nb">ds</span>
+	<span class="nf">push</span> <span class="nb">si</span>
+	<span class="nf">pusha</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="mh">0000H</span>
+	<span class="nf">mov</span> <span class="nb">es</span><span class="p">,</span> <span class="nb">ax</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="o">%</span><span class="mi">1</span>
+	<span class="nf">mov</span> <span class="nb">bx</span><span class="p">,</span> <span class="mi">4</span>
+	<span class="nf">mul</span> <span class="nb">bx</span>
+	<span class="nf">mov</span> <span class="nb">si</span><span class="p">,</span> <span class="nb">ax</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="o">%</span><span class="mi">2</span>
+	<span class="nf">mov</span> <span class="p">[</span><span class="nb">es</span><span class="p">:</span><span class="nb">si</span><span class="p">],</span> <span class="nb">ax</span>
+	<span class="nf">add</span> <span class="nb">si</span><span class="p">,</span> <span class="mi">2</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="nb">cs</span>
+	<span class="nf">mov</span> <span class="p">[</span><span class="nb">es</span><span class="p">:</span><span class="nb">si</span><span class="p">],</span> <span class="nb">ax</span>
+	<span class="nf">popa</span>
+	<span class="nf">pop</span> <span class="nb">si</span>
+	<span class="nf">pop</span> <span class="nb">ds</span>
+	<span class="nf">pop</span> <span class="nb">es</span>
+<span class="cp">%endmacro
+</span>	<span class="nf">bits</span> <span class="mi">16</span>
+	<span class="no">UserPrgOffset</span><span class="kd"> equ</span> <span class="mh">0a100H</span>
+	<span class="no">PrgSectorOffset</span><span class="kd"> equ</span> <span class="mi">0</span>
+	<span class="nf">extern</span> <span class="nv">terminal</span>
+	<span class="nf">global</span> <span class="nv">_start</span>
+	<span class="nf">global</span> <span class="nv">_getch</span>
+	<span class="nf">global</span> <span class="nv">_getCursor</span>
+	<span class="nf">global</span> <span class="nv">_setCursor</span>
+	<span class="nf">global</span> <span class="nv">_putC</span>
+	<span class="nf">global</span> <span class="nv">_pageUP</span>
+	<span class="nf">global</span> <span class="nv">_loadProgram</span>
+<span class="nl">_start:</span>
+	<span class="nf">setIVT</span> <span class="mi">8</span><span class="p">,</span> <span class="nv">int8</span>
+	<span class="nf">setIVT</span> <span class="mi">33</span><span class="p">,</span> <span class="nv">int33</span>
+	<span class="nf">setIVT</span> <span class="mi">34</span><span class="p">,</span> <span class="nv">int34</span>
+	<span class="nf">setIVT</span> <span class="mi">35</span><span class="p">,</span> <span class="nv">int35</span>
+	<span class="nf">setIVT</span> <span class="mi">36</span><span class="p">,</span> <span class="nv">int36</span>
+	<span class="nf">call</span> <span class="nv">terminal</span>
+	<span class="nf">ret</span>
+<span class="nl">_getCursor:</span>
+	<span class="nf">push</span> <span class="nb">ebp</span>
+	<span class="nf">mov</span> <span class="nb">ebp</span><span class="p">,</span> <span class="nb">esp</span>
+	<span class="nf">push</span> <span class="nb">ebx</span>
+	<span class="nf">sub</span> <span class="nb">esp</span><span class="p">,</span> <span class="mi">4</span>
+	<span class="nf">mov</span> <span class="nb">eax</span><span class="p">,</span> <span class="mi">768</span>
+	<span class="nf">mov</span> <span class="nb">edx</span><span class="p">,</span> <span class="mi">0</span>
+	<span class="nf">mov</span> <span class="nb">ebx</span><span class="p">,</span> <span class="nb">edx</span>
+	<span class="nf">int</span> <span class="mh">0x10</span>
+	<span class="nf">mov</span> <span class="nb">eax</span><span class="p">,</span> <span class="nb">edx</span>
+	<span class="nf">mov</span> <span class="kt">dword</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mi">8</span><span class="p">],</span> <span class="nb">eax</span>
+	<span class="nf">mov</span> <span class="nb">eax</span><span class="p">,</span> <span class="kt">dword</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">-</span><span class="mi">8</span><span class="p">]</span>
+	<span class="nf">add</span> <span class="nb">esp</span><span class="p">,</span> <span class="mi">4</span>
+	<span class="nf">pop</span> <span class="nb">ebx</span>
+	<span class="nf">pop</span> <span class="nb">ebp</span>
+	<span class="nf">ret</span>
+<span class="nl">_getch:</span>
+	<span class="nf">mov</span> <span class="nb">ah</span><span class="p">,</span> <span class="mh">01H</span>
+	<span class="nf">int</span> <span class="mh">16H</span>
+	<span class="nf">jz</span> <span class="nv">_getch</span>
+	<span class="nf">mov</span> <span class="nb">ah</span><span class="p">,</span> <span class="mh">00H</span>
+	<span class="nf">int</span> <span class="mh">16H</span>
+	<span class="nf">ret</span>
+<span class="nl">_setCursor:</span>
+	<span class="nf">push</span> <span class="nb">ebp</span>
+	<span class="nf">mov</span> <span class="nb">ebp</span><span class="p">,</span> <span class="nb">esp</span>
+	<span class="nf">push</span> <span class="nb">ebx</span>
+	<span class="nf">mov</span> <span class="nb">eax</span><span class="p">,</span> <span class="mi">512</span>
+	<span class="nf">mov</span> <span class="nb">ecx</span><span class="p">,</span> <span class="mi">0</span>
+	<span class="nf">mov</span> <span class="nb">edx</span><span class="p">,</span> <span class="kt">dword</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">8</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="nb">ebx</span><span class="p">,</span> <span class="nb">ecx</span>
+	<span class="nf">int</span> <span class="mh">0x10</span>
+	<span class="nf">pop</span> <span class="nb">ebx</span>
+	<span class="nf">pop</span> <span class="nb">ebp</span>
+	<span class="nf">ret</span>
+<span class="nl">_putC:</span>
+	<span class="nf">push</span> <span class="nb">ebp</span>
+	<span class="nf">mov</span> <span class="nb">ebp</span><span class="p">,</span> <span class="nb">esp</span>
+	<span class="nf">push</span> <span class="nb">ebx</span>
+	<span class="nf">mov</span> <span class="nb">eax</span><span class="p">,</span> <span class="kt">dword</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">8</span><span class="p">]</span>
+	<span class="nf">or</span> <span class="nb">ah</span><span class="p">,</span> <span class="mi">9</span>
+	<span class="nf">mov</span> <span class="nb">edx</span><span class="p">,</span> <span class="kt">dword</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">12</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="nb">ecx</span><span class="p">,</span> <span class="mi">1</span>
+	<span class="nf">mov</span> <span class="nb">ebx</span><span class="p">,</span> <span class="nb">edx</span>
+	<span class="nf">int</span> <span class="mh">0x10</span>
+	<span class="nf">pop</span> <span class="nb">ebx</span>
+	<span class="nf">pop</span> <span class="nb">ebp</span>
+	<span class="nf">ret</span>
+<span class="nl">_pageUP:</span>
+	<span class="nf">push</span> <span class="nb">ebp</span>
+	<span class="nf">mov</span> <span class="nb">ebp</span><span class="p">,</span> <span class="nb">esp</span>
+	<span class="nf">mov</span> <span class="nb">eax</span><span class="p">,</span> <span class="kt">dword</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">8</span><span class="p">]</span>
+	<span class="nf">or</span> <span class="nb">ah</span><span class="p">,</span> <span class="mi">6</span>
+	<span class="nf">mov</span> <span class="nb">ecx</span><span class="p">,</span> <span class="mi">0</span>
+	<span class="nf">mov</span> <span class="nb">edx</span><span class="p">,</span> <span class="mh">184fh</span>
+	<span class="nf">int</span> <span class="mh">0x10</span>
+	<span class="nf">pop</span> <span class="nb">ebp</span>
+	<span class="nf">ret</span>
+<span class="nl">_loadProgram:</span>
+	<span class="nf">push</span> <span class="nb">ebp</span>
+	<span class="nf">mov</span> <span class="nb">ebp</span><span class="p">,</span> <span class="nb">esp</span>
+	<span class="nf">push</span> <span class="nb">ax</span>
+	<span class="nf">push</span> <span class="nb">bx</span>
+	<span class="nf">push</span> <span class="nb">cx</span>
+	<span class="nf">push</span> <span class="nb">dx</span>
+	<span class="nf">push</span> <span class="nb">es</span>
+	<span class="nf">mov</span> <span class="nb">ax</span><span class="p">,</span> <span class="nb">cs</span>
+	<span class="nf">mov</span> <span class="nb">es</span><span class="p">,</span> <span class="nb">ax</span>
+	<span class="nf">mov</span> <span class="nb">bx</span><span class="p">,</span> <span class="nv">UserPrgOffset</span>
+	<span class="nf">mov</span> <span class="nb">ah</span><span class="p">,</span> <span class="mi">2</span>
+	<span class="nf">mov</span> <span class="nb">al</span><span class="p">,</span> <span class="mi">2</span>
+	<span class="nf">mov</span> <span class="nb">dl</span><span class="p">,</span> <span class="mi">0</span>
+	<span class="nf">mov</span> <span class="nb">dh</span><span class="p">,</span> <span class="mi">1</span>
+	<span class="nf">mov</span> <span class="nb">ch</span><span class="p">,</span> <span class="mi">0</span>
+	<span class="nf">mov</span> <span class="nb">cl</span><span class="p">,</span> <span class="kt">byte</span> <span class="p">[</span><span class="nb">ebp</span><span class="o">+</span><span class="mi">8</span><span class="p">]</span>
+	<span class="nf">add</span> <span class="nb">cl</span><span class="p">,</span> <span class="nv">PrgSectorOffset</span>
+	<span class="nf">int</span> <span class="mh">13H</span>
+	<span class="nf">call</span> <span class="nv">UserPrgOffset</span>
+	<span class="nf">pop</span> <span class="nb">es</span>
+	<span class="nf">pop</span> <span class="nb">dx</span>
+	<span class="nf">pop</span> <span class="nb">cx</span>
+	<span class="nf">pop</span> <span class="nb">bx</span>
+	<span class="nf">pop</span> <span class="nb">ax</span>
+	<span class="nf">mov</span> <span class="nb">esp</span><span class="p">,</span> <span class="nb">ebp</span>
+	<span class="nf">pop</span> <span class="nb">ebp</span>
+	<span class="nf">ret</span>
+<span class="nl">int8:</span>
+	<span class="nf">cli</span>
+	<span class="nf">pusha</span>
+	<span class="nf">push</span> <span class="nb">eax</span>
+	<span class="nf">call</span> <span class="nv">draw_slash</span>
+	<span class="nf">mov</span> <span class="nb">al</span><span class="p">,</span> <span class="mh">20H</span>
+	<span class="nf">out</span> <span class="mh">20H</span><span class="p">,</span> <span class="nb">al</span>
+	<span class="nf">out</span> <span class="mh">0a0H</span><span class="p">,</span> <span class="nb">al</span>
+	<span class="nf">pop</span> <span class="nb">eax</span>
+	<span class="nf">popa</span>
+	<span class="nf">sti</span>
+	<span class="nf">iret</span>
+<span class="nl">int33:</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">n</span><span class="p">],</span> <span class="mi">12</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">m</span><span class="p">],</span> <span class="mi">30</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">top</span><span class="p">],</span> <span class="mi">2</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">left</span><span class="p">],</span> <span class="mi">40</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">length</span><span class="p">],</span> <span class="mi">8</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">msg</span><span class="p">],</span> <span class="nv">msg1</span>
+	<span class="nf">call</span> <span class="nv">show</span>
+	<span class="nf">iret</span>
+<span class="nl">int34:</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">n</span><span class="p">],</span> <span class="mi">12</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">m</span><span class="p">],</span> <span class="mi">30</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">top</span><span class="p">],</span> <span class="mi">2</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">left</span><span class="p">],</span> <span class="mi">0</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">length</span><span class="p">],</span> <span class="mi">10</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">msg</span><span class="p">],</span> <span class="nv">msg2</span>
+	<span class="nf">call</span> <span class="nv">show</span>
+	<span class="nf">iret</span>
+<span class="nl">int35:</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">n</span><span class="p">],</span> <span class="mi">12</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">m</span><span class="p">],</span> <span class="mi">20</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">top</span><span class="p">],</span> <span class="mi">13</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">left</span><span class="p">],</span> <span class="mi">0</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">length</span><span class="p">],</span> <span class="mi">20</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">msg</span><span class="p">],</span> <span class="nv">msg3</span>
+	<span class="nf">call</span> <span class="nv">show</span>
+	<span class="nf">iret</span>
+<span class="nl">int36:</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">n</span><span class="p">],</span> <span class="mi">12</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">m</span><span class="p">],</span> <span class="mi">14</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">top</span><span class="p">],</span> <span class="mi">13</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">left</span><span class="p">],</span> <span class="mi">40</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">length</span><span class="p">],</span> <span class="mi">26</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">msg</span><span class="p">],</span> <span class="nv">msg4</span>
+	<span class="nf">call</span> <span class="nv">show</span>
+	<span class="nf">iret</span>
+<span class="nl">draw_slash:</span>
+	<span class="nf">print</span> <span class="nv">bar</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">24</span><span class="p">,</span><span class="mi">78</span><span class="p">,</span><span class="mi">7</span>
+	<span class="nf">cmp</span> <span class="kt">byte</span><span class="p">[</span><span class="nv">bar</span><span class="p">],</span><span class="s">'|'</span>
+	<span class="nf">jne</span> <span class="nv">rslash</span>
+	<span class="nf">mov</span> <span class="kt">byte</span><span class="p">[</span><span class="nv">bar</span><span class="p">],</span><span class="s">'/'</span>
+	<span class="nf">ret</span>
+<span class="nl">rslash:</span>
+	<span class="nf">cmp</span> <span class="kt">byte</span><span class="p">[</span><span class="nv">bar</span><span class="p">],</span><span class="s">'/'</span>
+	<span class="nf">jne</span> <span class="nv">hslash</span>
+	<span class="nf">mov</span> <span class="kt">byte</span><span class="p">[</span><span class="nv">bar</span><span class="p">],</span><span class="s">'-'</span>
+	<span class="nf">ret</span>
+<span class="nl">hslash:</span>
+	<span class="nf">cmp</span> <span class="kt">byte</span><span class="p">[</span><span class="nv">bar</span><span class="p">],</span><span class="s">'-'</span>
+	<span class="nf">jne</span> <span class="nv">lslash</span>
+	<span class="nf">mov</span> <span class="kt">byte</span><span class="p">[</span><span class="nv">bar</span><span class="p">],</span><span class="err">'\</span><span class="s">'
+	ret
+lslash:
+	mov byte[bar],'</span><span class="o">|</span><span class="err">'</span>
+	<span class="nf">ret</span>
+<span class="nl">show:</span>
+	<span class="nf">dec</span> <span class="kt">dword</span><span class="p">[</span><span class="nv">cnt</span><span class="p">]</span>
+	<span class="nf">jnz</span> <span class="nv">show</span>
+	<span class="nf">mov</span> <span class="kt">dword</span><span class="p">[</span><span class="nv">cnt</span><span class="p">],</span><span class="mi">99999999</span>
+	<span class="nf">mov</span> <span class="kt">word</span> <span class="nb">ax</span><span class="p">,</span> <span class="p">[</span><span class="nv">t</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="kt">word</span> <span class="nb">bx</span><span class="p">,</span> <span class="p">[</span><span class="nv">n</span><span class="p">]</span>
+	<span class="nf">add</span> <span class="nb">bx</span><span class="p">,</span> <span class="nb">bx</span>
+	<span class="nf">sub</span> <span class="nb">bx</span><span class="p">,</span> <span class="mi">2</span>
+	<span class="nf">xor</span> <span class="nb">dx</span><span class="p">,</span> <span class="nb">dx</span>
+	<span class="nf">div</span> <span class="nb">bx</span>
+	<span class="nf">cmp</span> <span class="nb">dx</span><span class="p">,</span> <span class="p">[</span><span class="nv">n</span><span class="p">]</span>
+	<span class="nf">jb</span> <span class="nv">xok</span>
+	<span class="nf">sub</span> <span class="nb">bx</span><span class="p">,</span> <span class="nb">dx</span>
+	<span class="nf">mov</span> <span class="nb">dx</span><span class="p">,</span> <span class="nb">bx</span>
+<span class="nl">xok:</span>
+	<span class="nf">add</span> <span class="nb">dx</span><span class="p">,</span> <span class="p">[</span><span class="nv">top</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="kt">word</span><span class="p">[</span><span class="nv">x</span><span class="p">],</span> <span class="nb">dx</span>
+	<span class="nf">mov</span> <span class="kt">word</span> <span class="nb">ax</span><span class="p">,</span> <span class="p">[</span><span class="nv">t</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="kt">word</span> <span class="nb">bx</span><span class="p">,</span> <span class="p">[</span><span class="nv">m</span><span class="p">]</span>
+	<span class="nf">add</span> <span class="nb">bx</span><span class="p">,</span><span class="nb">bx</span>
+	<span class="nf">sub</span> <span class="nb">bx</span><span class="p">,</span><span class="mi">2</span>
+	<span class="nf">xor</span> <span class="nb">dx</span><span class="p">,</span> <span class="nb">dx</span>
+	<span class="nf">div</span> <span class="nb">bx</span>
+	<span class="nf">cmp</span> <span class="nb">dx</span><span class="p">,</span> <span class="p">[</span><span class="nv">m</span><span class="p">]</span>
+	<span class="nf">jb</span> <span class="nv">yok</span>
+	<span class="nf">sub</span> <span class="nb">bx</span><span class="p">,</span> <span class="nb">dx</span>
+	<span class="nf">mov</span> <span class="nb">dx</span><span class="p">,</span> <span class="nb">bx</span>
+<span class="nl">yok:</span>
+	<span class="nf">add</span> <span class="nb">dx</span><span class="p">,[</span><span class="nv">left</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="kt">word</span> <span class="p">[</span><span class="nv">y</span><span class="p">],</span><span class="nb">dx</span>
+	<span class="nf">inc</span> <span class="kt">word</span><span class="p">[</span><span class="nv">t</span><span class="p">]</span>
+	<span class="nf">print</span> <span class="p">[</span><span class="nv">msg</span><span class="p">],[</span><span class="nv">length</span><span class="p">],[</span><span class="nv">x</span><span class="p">],[</span><span class="nv">y</span><span class="p">],[</span><span class="nv">x</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="nb">ah</span><span class="p">,</span> <span class="mh">01H</span>
+	<span class="nf">int</span> <span class="mh">16H</span>
+	<span class="nf">jz</span> <span class="nv">show</span>
+	<span class="nf">print</span> <span class="nv">msgouch</span><span class="p">,</span><span class="mi">10</span><span class="p">,[</span><span class="nv">x</span><span class="p">],[</span><span class="nv">y</span><span class="p">],[</span><span class="nv">x</span><span class="p">]</span>
+	<span class="nf">mov</span> <span class="nb">ah</span><span class="p">,</span> <span class="mh">00H</span>
+	<span class="nf">int</span> <span class="mh">16H</span>
+	<span class="nf">cmp</span> <span class="nb">ax</span><span class="p">,</span> <span class="mh">2e03H</span>
+	<span class="nf">jne</span> <span class="nv">show</span>
+	<span class="nf">ret</span>
+<span class="nl">datadef:</span>
+	<span class="nf">cnt</span> <span class="nv">dd</span> <span class="mi">1</span>
+	<span class="nf">t</span> <span class="nv">dw</span> <span class="mi">0</span>
+	<span class="nf">x</span> <span class="nv">dw</span> <span class="mi">1</span>
+	<span class="nf">y</span> <span class="nv">dw</span> <span class="mi">0</span>
+	<span class="nf">n</span> <span class="nv">dw</span> <span class="mi">12</span>
+	<span class="nf">m</span> <span class="nv">dw</span> <span class="mi">32</span>
+	<span class="nf">top</span> <span class="nv">dw</span> <span class="mi">2</span>
+	<span class="nf">left</span> <span class="nv">dw</span> <span class="mi">40</span>
+	<span class="nf">length</span> <span class="nv">dw</span> <span class="mi">8</span>
+	<span class="nf">msg</span> <span class="nv">dw</span> <span class="mi">1</span>
+	<span class="nf">msg1</span> <span class="nv">db</span> <span class="err">'</span> <span class="nv">wu</span><span class="o">-</span><span class="nv">kan</span> <span class="s">'
+	msg2 db '</span> <span class="mi">17341163</span> <span class="s">'
+	msg3 db '</span> <span class="nv">wu.kan@foxmail.com</span> <span class="s">'
+	msg4 db '</span> <span class="nv">https</span><span class="p">:</span><span class="o">//</span><span class="nv">wu</span><span class="o">-</span><span class="nv">kan.github.io</span> <span class="s">'
+	msgouch db '</span><span class="nv">Ouch</span><span class="err">!</span><span class="nv">Ouch</span><span class="err">!</span><span class="s">'
+	bar db '</span><span class="o">|</span><span class="err">'</span>
+</code></pre></div></div>
+
+<h3 id="kernerc">kerner.c</h3>
+
+<p>操作系统内核 C 语言部分的代码。</p>
+
+<p>和上一实验相比：</p>
+
+<ul>
+  <li>去掉了全部的内嵌汇编，改为调用外部汇编函数</li>
+  <li>修改了<code class="highlighter-rouge">clear</code>清屏的逻辑，原来是写若干个回车，现在是屏幕向上滚动一页并将光标移至首行首列</li>
+  <li>修改了显示回车的逻辑，原来是写若干个空格直至光标移动到下一行，现在直接移动光标</li>
+</ul>
+
+<p>函数不能传字符变量的问题仍然没有解决。</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#define SCREEN_WIDTH 80
+#define SCREEN_HEIGHT 25
+#define MAX_BUF_LEN (SCREEN_WIDTH * SCREEN_HEIGHT)
+#define PROGRAM_NUM 4
+</span><span class="k">extern</span> <span class="kt">int</span> <span class="nf">_getch</span><span class="p">();</span>
+<span class="k">extern</span> <span class="kt">int</span> <span class="nf">_getCursor</span><span class="p">();</span>
+<span class="k">extern</span> <span class="kt">void</span> <span class="nf">_pageUP</span><span class="p">(</span><span class="kt">int</span><span class="p">);</span>
+<span class="k">extern</span> <span class="kt">void</span> <span class="nf">_loadProgram</span><span class="p">(</span><span class="kt">int</span><span class="p">);</span>
+<span class="k">extern</span> <span class="kt">void</span> <span class="nf">_setCursor</span><span class="p">(</span><span class="kt">int</span> <span class="n">cur</span><span class="p">);</span>
+<span class="k">extern</span> <span class="kt">void</span> <span class="nf">_putC</span><span class="p">(</span><span class="kt">int</span> <span class="n">ch</span><span class="p">,</span> <span class="kt">int</span> <span class="n">color</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">putchar</span><span class="p">(</span><span class="kt">char</span> <span class="n">c</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="kt">int</span> <span class="n">cur</span> <span class="o">=</span> <span class="n">_getCursor</span><span class="p">(),</span> <span class="n">curX</span> <span class="o">=</span> <span class="n">cur</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">,</span> <span class="n">curY</span> <span class="o">=</span> <span class="n">cur</span> <span class="o">-</span> <span class="p">(</span><span class="n">curX</span> <span class="o">&lt;&lt;</span> <span class="mi">8</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">c</span> <span class="o">==</span> <span class="sc">'\r'</span> <span class="o">||</span> <span class="n">c</span> <span class="o">==</span> <span class="sc">'\n'</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="k">if</span> <span class="p">(</span><span class="o">++</span><span class="n">curX</span> <span class="o">&gt;=</span> <span class="n">SCREEN_HEIGHT</span><span class="p">)</span>
+			<span class="o">--</span><span class="n">curX</span><span class="p">,</span> <span class="n">_pageUP</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+		<span class="k">return</span> <span class="n">_setCursor</span><span class="p">(</span><span class="n">curX</span> <span class="o">&lt;&lt;</span> <span class="mi">8</span><span class="p">);</span>
+	<span class="p">}</span>
+	<span class="n">_putC</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="mh">0x07</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="o">++</span><span class="n">curY</span> <span class="o">&gt;=</span> <span class="n">SCREEN_WIDTH</span><span class="p">)</span>
+		<span class="n">putchar</span><span class="p">(</span><span class="sc">'\n'</span><span class="p">);</span>
+	<span class="n">_setCursor</span><span class="p">(</span><span class="n">curX</span> <span class="o">&lt;&lt;</span> <span class="mi">8</span> <span class="o">|</span> <span class="n">curY</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">gets</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">s</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">for</span> <span class="p">(;;</span> <span class="o">++</span><span class="n">s</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">putchar</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">=</span> <span class="n">_getch</span><span class="p">());</span>
+		<span class="k">if</span> <span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">'\r'</span> <span class="o">||</span> <span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">'\n'</span><span class="p">)</span>
+			<span class="k">break</span><span class="p">;</span>
+	<span class="p">}</span>
+	<span class="o">*</span><span class="n">s</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">printf</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">s</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">for</span> <span class="p">(;</span> <span class="o">*</span><span class="n">s</span><span class="p">;</span> <span class="o">++</span><span class="n">s</span><span class="p">)</span>
+		<span class="n">putchar</span><span class="p">(</span><span class="o">*</span><span class="n">s</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="kt">int</span> <span class="nf">strcmp</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">s1</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">s2</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">while</span> <span class="p">(</span><span class="o">*</span><span class="n">s1</span> <span class="o">&amp;&amp;</span> <span class="p">(</span><span class="o">*</span><span class="n">s1</span> <span class="o">==</span> <span class="o">*</span><span class="n">s2</span><span class="p">))</span>
+		<span class="o">++</span><span class="n">s1</span><span class="p">,</span> <span class="o">++</span><span class="n">s2</span><span class="p">;</span>
+	<span class="k">return</span> <span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="o">*</span><span class="n">s1</span> <span class="o">-</span> <span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="o">*</span><span class="n">s2</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="kt">void</span> <span class="nf">terminal</span><span class="p">()</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="k">struct</span>
+	<span class="p">{</span>
+		<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="o">*</span><span class="n">size</span><span class="p">,</span> <span class="o">*</span><span class="n">command</span><span class="p">;</span>
+		<span class="kt">int</span> <span class="n">address</span><span class="p">;</span>
+	<span class="p">}</span> <span class="n">prg</span><span class="p">[</span><span class="n">PROGRAM_NUM</span><span class="p">]</span> <span class="o">=</span>
+		<span class="p">{{</span><span class="s">"prg1"</span><span class="p">,</span> <span class="s">"    3 bytes"</span><span class="p">,</span> <span class="s">"exec 1"</span><span class="p">,</span> <span class="mi">1</span><span class="p">},</span>
+		 <span class="p">{</span><span class="s">"prg2"</span><span class="p">,</span> <span class="s">"    3 bytes"</span><span class="p">,</span> <span class="s">"exec 2"</span><span class="p">,</span> <span class="mi">2</span><span class="p">},</span>
+		 <span class="p">{</span><span class="s">"prg3"</span><span class="p">,</span> <span class="s">"    3 bytes"</span><span class="p">,</span> <span class="s">"exec 3"</span><span class="p">,</span> <span class="mi">3</span><span class="p">},</span>
+		 <span class="p">{</span><span class="s">"prg4"</span><span class="p">,</span> <span class="s">"    3 bytes"</span><span class="p">,</span> <span class="s">"exec 4"</span><span class="p">,</span> <span class="mi">4</span><span class="p">}};</span>
+	<span class="kt">char</span> <span class="n">str</span><span class="p">[</span><span class="n">MAX_BUF_LEN</span><span class="p">]</span> <span class="o">=</span> <span class="s">"$ "</span><span class="p">;</span>
+	<span class="n">printf</span><span class="p">(</span><span class="n">str</span><span class="p">),</span> <span class="n">gets</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+	<span class="k">const</span> <span class="kt">char</span>
+		<span class="n">CLEAR_COM</span><span class="p">[]</span> <span class="o">=</span> <span class="s">"clear"</span><span class="p">,</span>
+		<span class="n">HELP_COM</span><span class="p">[]</span> <span class="o">=</span> <span class="s">"help"</span><span class="p">,</span>
+		<span class="n">EXEC_COM</span><span class="p">[]</span> <span class="o">=</span> <span class="s">"exec"</span><span class="p">,</span>
+		<span class="n">EXIT_COM</span><span class="p">[]</span> <span class="o">=</span> <span class="s">"exit"</span><span class="p">,</span>
+		<span class="n">LS_COM</span><span class="p">[]</span> <span class="o">=</span> <span class="s">"ls"</span><span class="p">;</span>
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">CLEAR_COM</span><span class="p">))</span>
+		<span class="n">_pageUP</span><span class="p">(</span><span class="n">SCREEN_HEIGHT</span><span class="p">),</span> <span class="n">_setCursor</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+	<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">HELP_COM</span><span class="p">))</span>
+	<span class="p">{</span>
+		<span class="k">const</span> <span class="kt">char</span>
+			<span class="n">HELP_INFO</span><span class="p">[]</span> <span class="o">=</span>
+				<span class="s">"WuK-shell v0.0.2</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"These shell commands are defined internally.</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"Command         Description</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"clear        -- Clean the screen</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"help         -- Show this list</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"exec         -- Execute all the user programs</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"exec [num]   -- Execute the num-th program</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"exit         -- Exit OS</span><span class="se">\n</span><span class="s">"</span>
+				<span class="s">"ls           -- Show existing programs</span><span class="se">\n</span><span class="s">"</span><span class="p">;</span>
+		<span class="n">printf</span><span class="p">(</span><span class="n">HELP_INFO</span><span class="p">);</span>
+	<span class="p">}</span>
+	<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">EXEC_COM</span><span class="p">))</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">PROGRAM_NUM</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+			<span class="n">_loadProgram</span><span class="p">(</span><span class="n">prg</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">address</span><span class="p">);</span>
+	<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">EXIT_COM</span><span class="p">))</span>
+		<span class="k">return</span><span class="p">;</span>
+	<span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">LS_COM</span><span class="p">))</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">PROGRAM_NUM</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+			<span class="n">printf</span><span class="p">(</span><span class="n">prg</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">name</span><span class="p">),</span> <span class="n">printf</span><span class="p">(</span><span class="n">prg</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">size</span><span class="p">),</span> <span class="n">putchar</span><span class="p">(</span><span class="sc">'\n'</span><span class="p">);</span>
+	<span class="k">else</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+		<span class="p">{</span>
+			<span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="n">PROGRAM_NUM</span><span class="p">)</span>
+			<span class="p">{</span>
+				<span class="n">printf</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+				<span class="k">const</span> <span class="kt">char</span>
+					<span class="n">COMM_NOT_FOUND</span><span class="p">[]</span> <span class="o">=</span>
+						<span class="s">" : command not found, type </span><span class="se">\'</span><span class="s">help</span><span class="se">\'</span><span class="s"> for available commands list.</span><span class="se">\n</span><span class="s">"</span><span class="p">;</span>
+				<span class="n">printf</span><span class="p">(</span><span class="n">COMM_NOT_FOUND</span><span class="p">);</span>
+				<span class="k">break</span><span class="p">;</span>
+			<span class="p">}</span>
+			<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">strcmp</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="n">prg</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">command</span><span class="p">))</span>
+			<span class="p">{</span>
+				<span class="n">_loadProgram</span><span class="p">(</span><span class="n">prg</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">address</span><span class="p">);</span>
+				<span class="k">break</span><span class="p">;</span>
+			<span class="p">}</span>
+		<span class="p">}</span>
+	<span class="n">terminal</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="linkld">link.ld</h4>
+
+<p>将<code class="highlighter-rouge">wukos.asm</code>和<code class="highlighter-rouge">kernel.c</code>两个文件编译出来的内容连接起来。和<a href="https://wu-kan.cn/_posts/2019-03-28-用汇编与C语言开发独立内核/">上一个实验</a>中的完全相同，不再放出。</p>
+
+<h4 id="prg1asmprg4asm">prg1.asm~prg4.asm</h4>
+
+<p>直接调用 int 33、int 34、int 35 和 int 36 四个中断实现（编译出来的大小仅有 3bytes）。</p>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nf">org</span> <span class="mh">0a100H</span>
+<span class="nf">int</span> <span class="mi">33</span>
+<span class="nf">ret</span>
+</code></pre></div></div>
+
+<p>上面是 prg1.asm 的内容，其余同理，不再放出。</p>
+
+<h4 id="makefile">Makefile</h4>
+
+<p>和<a href="https://wu-kan.cn/_posts/2019-03-28-用汇编与C语言开发独立内核/">上一个实验</a>完全相同，不再放出。</p>
+
+<h3 id="运行结果">运行结果</h3>
+
+<p><img src="/assets/image/2019-03-31-1.jpg" alt="1" />
+如上图，进入操作系统后开始了“无敌风火轮”（右下角）。
+<img src="/assets/image/2019-03-31-2.jpg" alt="2" />
+如上图，使用<code class="highlighter-rouge">exec</code>指令轮流运行我的四个程序，分别调用软中断<code class="highlighter-rouge">int 33</code>~<code class="highlighter-rouge">int 36</code>。按下 Ctrl+C 可以退出程序。程序检测到键盘输入，因此显示<code class="highlighter-rouge">Ouch!Ouch!</code></p>
+
+<p>风火轮仍然在转。
+<img src="/assets/image/2019-03-31-3.jpg" alt="3" />
+输入若干指令。</p>
+
+<p>风火轮仍然在转。
+<img src="/assets/image/2019-03-31-4.jpg" alt="4" />
+继续输入若干指令，此时超出屏幕显示范围，自动滚屏。</p>
+
+<p>风火轮仍然在转。</p>
+
+<h2 id="实验总结">实验总结</h2>
+
+<p>这次实验让我深入理解了中断服务程序的工作原理。中断响应后，先到内存指定位置找到中断向量表，然后跳转到中断服务程序。中断服务程序需先保存寄存器。中断服务程序完成后，需先还原寄存器，然后调用中断返回指令。所以在做实验的时候，就需要修改操作系统内核，使操作系统内核修改中断向量表，才能实现自定义中断服务程序。</p>
+
+<p>在实验中，因为乱用宏以及没有恢复寄存器出了挺多问题，好在最终一一解决了。这也让我意识到之前的代码写的有多差、有多少隐患。因此，几乎将原先的代码完全重构了一遍。希望自己还是要多多注意一下这方面的问题。</p>
+:ET

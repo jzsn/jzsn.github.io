@@ -1,0 +1,407 @@
+I"}�<h2 id="实验目的">实验目的</h2>
+
+<p>利用 python 实现 kMeans 算法</p>
+
+<h2 id="实验简介">实验简介</h2>
+
+<p>利用 python 的文本处理能力将文档切分成词，通过集合元素的唯一性生成词汇列 表（不包括重复词汇），进而构建词向量（词集向量或词袋向量），从词向量计算概率，然后 构建分类器对邮件文档进行垃圾邮件分类。代码文件：bayes.py</p>
+
+<h2 id="实验环境">实验环境</h2>
+
+<h3 id="硬件">硬件</h3>
+
+<p>所用机器型号为 VAIO Z Flip 2016</p>
+
+<ul>
+  <li>Intel(R) Core(TM) i7-6567U CPU @3.30GHZ 3.31GHz</li>
+  <li>8.00GB RAM</li>
+</ul>
+
+<h3 id="软件">软件</h3>
+
+<ul>
+  <li>Windows 10, 64-bit (Build 17763) 10.0.17763</li>
+  <li>Visual Studio Code 1.39.2
+    <ul>
+      <li>Python 2019.10.41019：九月底发布的 VSCode Python 插件支持在编辑器窗口内原生运行 juyter nootbook 了，非常赞！</li>
+      <li>Remote - WSL 0.39.9：配合 WSL，在 Windows 上获得 Linux 接近原生环境的体验。</li>
+    </ul>
+  </li>
+  <li>Windows Subsystem for Linux [Ubuntu 18.04.2 LTS]：WSL 是以软件的形式运行在 Windows 下的 Linux 子系统，是近些年微软推出来的新工具，可以在 Windows 系统上原生运行 Linux。
+    <ul>
+      <li>Python 3.7.4 64-bit (‘anaconda3’:virtualenv)：安装在 WSL 中。</li>
+    </ul>
+  </li>
+</ul>
+
+<h2 id="实验过程">实验过程</h2>
+
+<ul>
+  <li>利用 sklearn 中 BernoulliNB 分类该邮件数据集</li>
+  <li>bayes.py 中的语句“from numpy import * ”用语句“import numpy as np”代替，修改其中对应的代码，使其能够正常执行。</li>
+  <li>将词集向量用 TF-IDF 词向量替代，测试分析结果</li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 利用 sklearn中 BernoulliNB分类该邮件数据集
+# bayes.py中的语句“from numpy import * ”用语句“import numpy as np”代替，修改其中对应的代码，使其能够正常执行。
+# 将词集向量用 TF-IDF词向量替代，测试分析结果
+# coding=utf-8
+</span><span class="s">'''
+项目名称：
+作者
+日期
+'''</span>
+
+<span class="c1"># 导入必要库
+</span><span class="kn">from</span> <span class="nn">sklearn</span> <span class="kn">import</span> <span class="n">feature_extraction</span>  <span class="c1"># 导入sklearn库, 以获取文本的tf-idf值
+</span><span class="kn">from</span> <span class="nn">sklearn.feature_extraction.text</span> <span class="kn">import</span> <span class="n">CountVectorizer</span>
+<span class="kn">from</span> <span class="nn">sklearn.feature_extraction.text</span> <span class="kn">import</span> <span class="n">TfidfTransformer</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">from</span> <span class="nn">sklearn.naive_bayes</span> <span class="kn">import</span> <span class="n">BernoulliNB</span>
+
+<span class="c1"># 创建实验样本
+</span>
+
+<span class="k">def</span> <span class="nf">loadDataSet</span><span class="p">():</span>
+    <span class="n">postingList</span> <span class="o">=</span> <span class="p">[[</span><span class="s">'my'</span><span class="p">,</span> <span class="s">'dog'</span><span class="p">,</span> <span class="s">'has'</span><span class="p">,</span> <span class="s">'flea'</span><span class="p">,</span> <span class="s">'problems'</span><span class="p">,</span> <span class="s">'help'</span><span class="p">,</span> <span class="s">'please'</span><span class="p">],</span>
+                   <span class="p">[</span><span class="s">'maybe'</span><span class="p">,</span> <span class="s">'not'</span><span class="p">,</span> <span class="s">'take'</span><span class="p">,</span> <span class="s">'him'</span><span class="p">,</span> <span class="s">'to'</span><span class="p">,</span> <span class="s">'dog'</span><span class="p">,</span> <span class="s">'park'</span><span class="p">,</span> <span class="s">'stupid'</span><span class="p">],</span>
+                   <span class="p">[</span><span class="s">'my'</span><span class="p">,</span> <span class="s">'dalmation'</span><span class="p">,</span> <span class="s">'is'</span><span class="p">,</span> <span class="s">'so'</span><span class="p">,</span> <span class="s">'cute'</span><span class="p">,</span> <span class="s">'I'</span><span class="p">,</span> <span class="s">'love'</span><span class="p">,</span> <span class="s">'him'</span><span class="p">],</span>
+                   <span class="p">[</span><span class="s">'stop'</span><span class="p">,</span> <span class="s">'posting'</span><span class="p">,</span> <span class="s">'stupid'</span><span class="p">,</span> <span class="s">'worthless'</span><span class="p">,</span> <span class="s">'garbage'</span><span class="p">],</span>
+                   <span class="p">[</span><span class="s">'mr'</span><span class="p">,</span> <span class="s">'licks'</span><span class="p">,</span> <span class="s">'ate'</span><span class="p">,</span> <span class="s">'my'</span><span class="p">,</span> <span class="s">'steak'</span><span class="p">,</span>
+                       <span class="s">'how'</span><span class="p">,</span> <span class="s">'to'</span><span class="p">,</span> <span class="s">'stop'</span><span class="p">,</span> <span class="s">'him'</span><span class="p">],</span>
+                   <span class="p">[</span><span class="s">'quit'</span><span class="p">,</span> <span class="s">'buying'</span><span class="p">,</span> <span class="s">'worthless'</span><span class="p">,</span> <span class="s">'dog'</span><span class="p">,</span> <span class="s">'food'</span><span class="p">,</span> <span class="s">'stupid'</span><span class="p">]]</span>
+    <span class="c1"># 1 代表侮辱性文字, 0 代表正常言论
+</span>    <span class="n">classVec</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+    <span class="c1"># postingList为词条切分后的文档集合，classVec为类别标签集合
+</span>    <span class="k">return</span> <span class="n">postingList</span><span class="p">,</span> <span class="n">classVec</span>
+
+
+<span class="k">def</span> <span class="nf">createVocabList</span><span class="p">(</span><span class="n">dataSet</span><span class="p">):</span>
+    <span class="n">vocabSet</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([])</span>
+    <span class="k">for</span> <span class="n">docment</span> <span class="ow">in</span> <span class="n">dataSet</span><span class="p">:</span>
+        <span class="c1"># 两个集合的并集
+</span>        <span class="n">vocabSet</span> <span class="o">=</span> <span class="n">vocabSet</span> <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">docment</span><span class="p">)</span>
+    <span class="c1"># 转换成列表
+</span>    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">vocabSet</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">setOfWords2Vec</span><span class="p">(</span><span class="n">vocabList</span><span class="p">,</span> <span class="n">inputSet</span><span class="p">):</span>
+    <span class="c1"># 创建一个与词汇表等长的向量，并将其元素都设置为0
+</span>    <span class="n">returnVec</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="n">vocabList</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">inputSet</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">vocabList</span><span class="p">:</span>
+            <span class="c1"># 查找单词的索引
+</span>            <span class="n">returnVec</span><span class="p">[</span><span class="n">vocabList</span><span class="p">.</span><span class="n">index</span><span class="p">(</span><span class="n">word</span><span class="p">)]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">"the word: %s is not in my vocabulary"</span> <span class="o">%</span> <span class="n">word</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">returnVec</span>
+
+
+<span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">trainMat</span><span class="p">,</span> <span class="n">trainCategory</span><span class="p">):</span>
+    <span class="c1"># trainMat:训练样本的词向量矩阵，每一行为一个邮件的词向量
+</span>    <span class="c1"># trainGategory:对应的类别标签，值为0，1表示正常，垃圾
+</span>    <span class="n">numTrain</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trainMat</span><span class="p">)</span>
+    <span class="n">numWords</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trainMat</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">pAbusive</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">trainCategory</span><span class="p">)</span><span class="o">/</span><span class="nb">float</span><span class="p">(</span><span class="n">numTrain</span><span class="p">)</span>
+    <span class="n">p0Num</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">ones</span><span class="p">(</span><span class="n">numWords</span><span class="p">)</span>
+    <span class="n">p1Num</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">ones</span><span class="p">(</span><span class="n">numWords</span><span class="p">)</span>
+    <span class="n">p0Denom</span> <span class="o">=</span> <span class="mf">2.0</span>
+    <span class="n">p1Denom</span> <span class="o">=</span> <span class="mf">2.0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">numTrain</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">trainCategory</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+
+            <span class="n">p1Num</span> <span class="o">+=</span> <span class="n">trainMat</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="n">p1Denom</span> <span class="o">+=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">trainMat</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+
+            <span class="n">p0Num</span> <span class="o">+=</span> <span class="n">trainMat</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="n">p0Denom</span> <span class="o">+=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">trainMat</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+    <span class="c1"># 类1中每个单词的概率
+</span>    <span class="n">p1Vec</span> <span class="o">=</span> <span class="n">p1Num</span><span class="o">/</span><span class="n">p1Denom</span>
+    <span class="n">p0Vec</span> <span class="o">=</span> <span class="n">p0Num</span><span class="o">/</span><span class="n">p0Denom</span>
+    <span class="c1"># 类0中每个单词的概率
+</span>    <span class="k">return</span> <span class="n">p0Vec</span><span class="p">,</span> <span class="n">p1Vec</span><span class="p">,</span> <span class="n">pAbusive</span>
+
+
+<span class="k">def</span> <span class="nf">classfy</span><span class="p">(</span><span class="n">vec2classfy</span><span class="p">,</span> <span class="n">p0Vec</span><span class="p">,</span> <span class="n">p1Vec</span><span class="p">,</span> <span class="n">pClass1</span><span class="p">):</span>
+    <span class="n">p1</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">vec2classfy</span><span class="o">*</span><span class="n">p1Vec</span><span class="p">)</span><span class="o">+</span><span class="n">np</span><span class="p">.</span><span class="n">log</span><span class="p">(</span><span class="n">pClass1</span><span class="p">)</span>
+    <span class="n">p0</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">vec2classfy</span><span class="o">*</span><span class="n">p0Vec</span><span class="p">)</span><span class="o">+</span><span class="n">np</span><span class="p">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">pClass1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">p1</span> <span class="o">&gt;</span> <span class="n">p0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span>
+
+<span class="c1"># 对邮件的文本划分成词汇，长度小于2的默认为不是词汇，过滤掉即可。返回一串小写的拆分后的邮件信息。
+</span>
+
+<span class="k">def</span> <span class="nf">textParse</span><span class="p">(</span><span class="n">bigString</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">re</span>
+    <span class="n">listOfTokens</span> <span class="o">=</span> <span class="n">re</span><span class="p">.</span><span class="n">split</span><span class="p">(</span><span class="s">r'\</span><span class="err">W+</span><span class="s">', bigString)
+    return [tok.lower() for tok in listOfTokens if len(tok) &gt; 2]
+
+
+def bagOfWords2Vec(vocabList, inputSet):
+    # vocablist为词汇表，inputSet为输入的邮件
+    returnVec = [0]*len(vocabList)
+    for word in inputSet:
+        if word in vocabList:
+            # 查找单词的索引
+            returnVec[vocabList.index(word)] = 1
+        else:
+            print("the word is not in my vocabulary")
+    return returnVec
+
+# 将词集向量用 TF-IDF词向量替代，测试分析结果
+
+def TfidfVec(get_texts):
+    mat = CountVectorizer()
+    tf = TfidfTransformer()
+    tfidf = tf.fit_transform(mat.fit_transform(get_texts))
+    word = mat.get_feature_names()  # 单词的名称
+    weight = tfidf.toarray()  # 权重矩阵, 在此示范中矩阵为(1, n)
+    return weight
+
+
+def spamTest():
+    fullTest = []
+    docList = []
+    classList = []
+    # it only 25 doc in every class
+    for i in range(1, 26):
+        wordList = textParse(open('</span><span class="n">email</span><span class="o">/</span><span class="n">spam</span><span class="o">/%</span><span class="n">d</span><span class="p">.</span><span class="n">txt</span><span class="s">' %
+                                  i, encoding="ISO-8859-1").read())
+        docList.append(wordList)
+        fullTest.extend(wordList)
+        classList.append(1)
+        wordList = textParse(open('</span><span class="n">email</span><span class="o">/</span><span class="n">ham</span><span class="o">/%</span><span class="n">d</span><span class="p">.</span><span class="n">txt</span><span class="s">' %
+                                  i, encoding="ISO-8859-1").read())
+        docList.append(wordList)
+        fullTest.extend(wordList)
+        classList.append(0)
+    # create vocabulary
+    vocabList = createVocabList(docList)
+    trainSet = list(range(50))
+    testSet = []
+    # choose 10 sample to test ,it index of trainMat
+    for i in range(10):
+        randIndex = int(np.random.uniform(0, len(trainSet)))  # num in 0-49
+        testSet.append(trainSet[randIndex])
+        del(trainSet[randIndex])
+    trainMat = []
+    trainClass = []
+    for docIndex in trainSet:
+        trainMat.append(bagOfWords2Vec(vocabList, docList[docIndex]))
+        trainClass.append(classList[docIndex])
+    # p0, p1, pSpam = train(np.array(trainMat), np.array(trainClass))
+    # 保留下两行而将上一行注释掉，即可利用 sklearn中 BernoulliNB分类该邮件数据集
+    clf = BernoulliNB()
+    clf.fit(np.array(trainMat), np.array(trainClass))
+    errCount = 0
+    for docIndex in testSet:
+        wordVec = bagOfWords2Vec(vocabList, docList[docIndex])
+        # if classfy(np.array(wordVec), p0, p1, pSpam) != classList[docIndex]:
+        # 保留下两行而将上一行注释掉，即可利用 sklearn中 BernoulliNB分类该邮件数据集
+        if clf.predict(np.array([wordVec])) != classList[docIndex]:
+            errCount += 1
+            print(("classfication error"), docList[docIndex])
+
+    print(("the error rate is "), float(errCount)/len(testSet))
+
+if __name__ == '</span><span class="n">__main__</span><span class="s">':
+    spamTest()
+</span></code></pre></div></div>
+
+<p>运行结果如下，可以看到效果还是很不错的。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>the error rate is  0.0
+</code></pre></div></div>
+
+<ul>
+  <li>编程实现 PPT 中的例 1</li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 编程实现 PPT中的例 1
+</span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">from</span> <span class="nn">sklearn.naive_bayes</span> <span class="kn">import</span> <span class="n">GaussianNB</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">],</span>
+                    <span class="p">[</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">],</span>
+                    <span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">]])</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">clf</span><span class="o">=</span><span class="n">GaussianNB</span><span class="p">()</span>
+    <span class="n">clf</span><span class="p">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">clf</span><span class="p">.</span><span class="n">predict</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">]]))</span>
+</code></pre></div></div>
+
+<p>运行结果如下。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">[</span>1]
+</code></pre></div></div>
+
+<ul>
+  <li>利用朴素贝叶斯算法实现对 lab6 的两个数据集分类。</li>
+</ul>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 利用朴素贝叶斯算法实现对 lab6的两个数据集分类。
+</span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">from</span> <span class="nn">sklearn.model_selection</span> <span class="kn">import</span> <span class="n">train_test_split</span>
+<span class="kn">from</span> <span class="nn">sklearn</span> <span class="kn">import</span> <span class="n">preprocessing</span>
+<span class="kn">from</span> <span class="nn">sklearn.naive_bayes</span> <span class="kn">import</span> <span class="n">BernoulliNB</span>
+
+<span class="k">def</span> <span class="nf">file2matrix</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="n">fr</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+    <span class="c1"># 得到文件行数
+</span>    <span class="n">arrayOfLines</span> <span class="o">=</span> <span class="n">fr</span><span class="p">.</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="n">numberOfLines</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">arrayOfLines</span><span class="p">)</span>
+    <span class="c1"># 创建返回的Numpy矩阵
+</span>    <span class="n">returnMat</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">numberOfLines</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+    <span class="n">classLabelVector</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c1"># 解析文件数据到列表
+</span>    <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">arrayOfLines</span><span class="p">:</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="p">.</span><span class="n">strip</span><span class="p">()</span>  <span class="c1"># 注释1
+</span>        <span class="n">listFromLine</span> <span class="o">=</span> <span class="n">line</span><span class="p">.</span><span class="n">split</span><span class="p">(</span><span class="s">'</span><span class="si">\</span><span class="se">t</span><span class="s">'</span><span class="p">)</span>  <span class="c1"># 注释2
+</span>        <span class="n">returnMat</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">listFromLine</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+        <span class="n">classLabelVector</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">listFromLine</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">returnMat</span><span class="p">,</span> <span class="n">classLabelVector</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">'__main__'</span><span class="p">:</span>
+    <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">file2matrix</span><span class="p">(</span><span class="s">'datingTestSet2.txt'</span><span class="p">)</span>
+    <span class="n">X_train</span><span class="p">,</span> <span class="n">X_test</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">y_test</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+    <span class="n">clf</span> <span class="o">=</span> <span class="n">BernoulliNB</span><span class="p">()</span>
+    <span class="n">clf</span><span class="p">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">clf</span><span class="p">.</span><span class="n">score</span><span class="p">(</span><span class="n">X_test</span><span class="p">,</span> <span class="n">y_test</span><span class="p">,</span> <span class="n">sample_weight</span><span class="o">=</span><span class="bp">None</span><span class="p">))</span>
+</code></pre></div></div>
+
+<p>运行结果如下。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>0.325
+</code></pre></div></div>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 利用朴素贝叶斯算法实现对 lab6的两个数据集分类。
+# 利用sklearn实现使用朴素贝叶斯分类器识别手写体应用。
+</span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">from</span> <span class="nn">sklearn.naive_bayes</span> <span class="kn">import</span> <span class="n">BernoulliNB</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">listdir</span>
+
+
+<span class="k">def</span> <span class="nf">img2vector</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="s">'''
+    filename:文件名字
+    将这个文件的所有数据按照顺序写成一个一维向量并返回
+    '''</span>
+    <span class="n">returnVect</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">fr</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">32</span><span class="p">):</span>
+        <span class="n">lineStr</span> <span class="o">=</span> <span class="n">fr</span><span class="p">.</span><span class="n">readline</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">32</span><span class="p">):</span>
+            <span class="n">returnVect</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">lineStr</span><span class="p">[</span><span class="n">j</span><span class="p">]))</span>
+    <span class="k">return</span> <span class="n">returnVect</span>
+
+<span class="c1"># 从文件名中解析分类数字
+</span>
+
+<span class="k">def</span> <span class="nf">classnumCut</span><span class="p">(</span><span class="n">fileName</span><span class="p">):</span>
+    <span class="s">'''
+    filename:文件名
+    返回这个文件数据代表的实际数字
+    '''</span>
+    <span class="n">fileStr</span> <span class="o">=</span> <span class="n">fileName</span><span class="p">.</span><span class="n">split</span><span class="p">(</span><span class="s">'.'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">classNumStr</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">fileStr</span><span class="p">.</span><span class="n">split</span><span class="p">(</span><span class="s">'_'</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">classNumStr</span>
+
+<span class="c1"># 构建训练集数据向量及对应分类标签向量
+</span>
+
+<span class="k">def</span> <span class="nf">trainingDataSet</span><span class="p">():</span>
+    <span class="s">'''
+    从trainingDigits文件夹下面读取所有数据文件，返回：
+    trainingMat：所有训练数据，每一行代表一个数据文件中的内容
+    hwLabels：每一项表示traningMat中对应项的数据到底代表数字几
+    '''</span>
+    <span class="n">hwLabels</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c1"># 获取目录traningDigits内容(即数据集文件名)，并储存在一个list中
+</span>    <span class="n">trainingFileList</span> <span class="o">=</span> <span class="n">listdir</span><span class="p">(</span><span class="s">'trainingDigits'</span><span class="p">)</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trainingFileList</span><span class="p">)</span>  <span class="c1"># 当前目录文件数
+</span>    <span class="c1"># 初始化m维向量的训练集，每个向量1024维
+</span>    <span class="n">trainingMat</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">m</span><span class="p">,</span> <span class="mi">1024</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">m</span><span class="p">):</span>
+        <span class="n">fileNameStr</span> <span class="o">=</span> <span class="n">trainingFileList</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="c1"># 从文件名中解析分类数字，作为分类标签
+</span>        <span class="n">hwLabels</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="n">classnumCut</span><span class="p">(</span><span class="n">fileNameStr</span><span class="p">))</span>
+        <span class="c1"># 将图片矩阵转换为向量并储存在新的矩阵中
+</span>        <span class="n">trainingMat</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">img2vector</span><span class="p">(</span><span class="s">'trainingDigits/%s'</span> <span class="o">%</span> <span class="n">fileNameStr</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">hwLabels</span><span class="p">,</span> <span class="n">trainingMat</span>
+
+
+<span class="k">def</span> <span class="nf">handwritingTest</span><span class="p">():</span>
+    <span class="c1"># 构建训练集
+</span>    <span class="n">hwLabels</span><span class="p">,</span> <span class="n">trainingMat</span> <span class="o">=</span> <span class="n">trainingDataSet</span><span class="p">()</span>
+
+    <span class="c1"># 从testDigits里面拿到测试集
+</span>    <span class="n">testFileList</span> <span class="o">=</span> <span class="n">listdir</span><span class="p">(</span><span class="s">'testDigits'</span><span class="p">)</span>
+
+    <span class="c1"># 错误数
+</span>    <span class="n">errorCount</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># 测试集总样本数
+</span>    <span class="n">mTest</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">testFileList</span><span class="p">)</span>
+
+    <span class="c1"># 获取程序运行到此处的时间（开始测试）
+</span>    <span class="n">t1</span> <span class="o">=</span> <span class="n">time</span><span class="p">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="n">clf</span> <span class="o">=</span> <span class="n">BernoulliNB</span><span class="p">()</span>
+    <span class="n">clf</span><span class="p">.</span><span class="n">fit</span><span class="p">(</span><span class="n">trainingMat</span><span class="p">,</span> <span class="n">hwLabels</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mTest</span><span class="p">):</span>
+
+        <span class="c1"># 得到当前文件名
+</span>        <span class="n">fileNameStr</span> <span class="o">=</span> <span class="n">testFileList</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+        <span class="c1"># 从文件名中解析分类数字
+</span>        <span class="n">classNumStr</span> <span class="o">=</span> <span class="n">classnumCut</span><span class="p">(</span><span class="n">fileNameStr</span><span class="p">)</span>
+
+        <span class="c1"># 将图片矩阵转换为向量
+</span>        <span class="n">vectorUnderTest</span> <span class="o">=</span> <span class="n">img2vector</span><span class="p">(</span><span class="s">'testDigits/%s'</span> <span class="o">%</span> <span class="n">fileNameStr</span><span class="p">)</span>
+
+        <span class="c1"># 调用knn算法进行测试
+</span>        <span class="n">classifierResult</span> <span class="o">=</span> <span class="n">clf</span><span class="p">.</span><span class="n">predict</span><span class="p">([</span><span class="n">vectorUnderTest</span><span class="p">])</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">"the classifier came back with: %d, the real answer is: %d"</span> <span class="o">%</span>
+              <span class="p">(</span><span class="n">classifierResult</span><span class="p">,</span> <span class="n">classNumStr</span><span class="p">))</span>
+
+        <span class="c1"># 预测结果不一致，则错误数+1
+</span>        <span class="k">if</span> <span class="p">(</span><span class="n">classifierResult</span> <span class="o">!=</span> <span class="n">classNumStr</span><span class="p">):</span>
+            <span class="n">errorCount</span> <span class="o">+=</span> <span class="mf">1.0</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s">"</span><span class="si">\</span><span class="se">n</span><span class="s">the total number of tests is: %d"</span> <span class="o">%</span> <span class="n">mTest</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"the total number of errors is: %d"</span> <span class="o">%</span> <span class="n">errorCount</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">"the total error rate is: %f"</span> <span class="o">%</span> <span class="p">(</span><span class="n">errorCount</span><span class="o">/</span><span class="nb">float</span><span class="p">(</span><span class="n">mTest</span><span class="p">)))</span>
+
+    <span class="c1"># 获取程序运行到此处的时间（结束测试）
+</span>    <span class="n">t2</span> <span class="o">=</span> <span class="n">time</span><span class="p">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="c1"># 测试耗时
+</span>    <span class="k">print</span><span class="p">(</span><span class="s">"Cost time: %.2fmin, %.4fs."</span> <span class="o">%</span> <span class="p">((</span><span class="n">t2</span><span class="o">-</span><span class="n">t1</span><span class="p">)</span><span class="o">//</span><span class="mi">60</span><span class="p">,</span> <span class="p">(</span><span class="n">t2</span><span class="o">-</span><span class="n">t1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">60</span><span class="p">))</span>
+
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
+    <span class="n">handwritingTest</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>运行时间如下。</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>the total number of tests is: 946
+the total number of errors is: 65
+the total error rate is: 0.068710
+Cost <span class="nb">time</span>: 0.00min, 21.8384s.
+</code></pre></div></div>
+
+<h2 id="实验总结">实验总结</h2>
+
+<p>通过本次实验，我大致熟悉了 sklearn 使用朴素贝叶斯做分类的算法，得益于之前概率论的学习，还是很容易理解并使用的。</p>
+:ET

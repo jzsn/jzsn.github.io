@@ -1,0 +1,437 @@
+<p>The art of doing more with less.</p>
+
+<!-- slide -->
+
+<h2 id="blockdim-griddim">blockDim, gridDim</h2>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>第一次写 cuda 程序的时候，最让我抓狂的就是调用核函数时需要指定的这两个参数。</li>
+  <li>在对显卡硬件架构不熟悉的情况下，调参似乎是一种玄学，更是一种哲学。</li>
+</ul>
+
+<!-- slide -->
+
+<h3 id="blockdim-的经验值"><code class="highlighter-rouge">blockDim</code> 的经验值</h3>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>由于显卡是按照 STMD（多线程执行同一段代码）方式调度线程的，因此如果要充分利用调度资源，<code class="highlighter-rouge">blockDim</code> 最好要是调度最小单位 Warp 的倍数。</li>
+  <li>目前主流的显卡单个 Warp 中都是 32 个线程，不排除未来会增加的可能。</li>
+  <li>以下是一些 <code class="highlighter-rouge">blockDim</code> 的经验值，在大部分情况下都会有较优的表现。</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">dim3</span> <span class="nf">block_dim_1</span><span class="p">(</span><span class="mi">128</span><span class="p">);</span> <span class="c1">// 用于一维</span>
+<span class="n">dim3</span> <span class="nf">block_dim_2</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">16</span><span class="p">);</span> <span class="c1">// 用于二维</span>
+<span class="n">dim3</span> <span class="nf">block_dim_3</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">);</span> <span class="c1">// 用于三维</span>
+<span class="n">dim3</span> <span class="nf">block_dim_v100</span><span class="p">(</span><span class="mi">1024</span><span class="p">);</span> <span class="c1">// 让v100显卡满载；很多老显卡不支持，最多768个</span>
+</code></pre></div></div>
+
+<!-- slide -->
+
+<h3 id="cudaoccupancymaxpotentialblocksize"><code class="highlighter-rouge">cudaOccupancyMaxPotentialBlockSize</code></h3>
+
+<p>从 CUDA 6.5 开始，提供了一个很有用的函数 <code class="highlighter-rouge">cudaOccupancyMaxPotentialBlockSize</code>，该函数定义在 <code class="highlighter-rouge">&lt;cuda_runtime.h&gt;</code>，接口及含义见代码中的注释。</p>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">T</span><span class="p">&gt;</span>
+<span class="n">cudaError_t</span> <span class="n">__inline__</span> <span class="n">__host__</span> <span class="n">CUDART_DEVICE</span>
+<span class="nf">cudaOccupancyMaxPotentialBlockSize</span><span class="p">(</span>
+    <span class="kt">int</span> <span class="o">*</span><span class="n">minGridSize</span><span class="p">,</span>           <span class="c1">// Suggested min grid size to achieve a full machine launch.</span>
+    <span class="kt">int</span> <span class="o">*</span><span class="n">blockSize</span><span class="p">,</span>             <span class="c1">// Suggested block size to achieve maximum occupancy.</span>
+    <span class="n">T</span> <span class="n">func</span><span class="p">,</span>                     <span class="c1">// Kernel function.</span>
+    <span class="kt">size_t</span> <span class="n">dynamicSMemSize</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="c1">//Size of dynamically allocated shared memory. Of course, it is known at runtime before any kernel launch. The size of the statically allocated shared memory is not needed as it is inferred by the properties of func.</span>
+    <span class="kt">int</span> <span class="n">blockSizeLimit</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>     <span class="c1">//blockSizeLimit  = Maximum size for each block. In the case of 1D kernels, it can coincide with the number of input elements.</span>
+<span class="p">{</span>
+    <span class="k">return</span> <span class="n">cudaOccupancyMaxPotentialBlockSizeVariableSMem</span><span class="p">(</span><span class="n">minGridSize</span><span class="p">,</span> <span class="n">blockSize</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">__cudaOccupancyB2DHelper</span><span class="p">(</span><span class="n">dynamicSMemSize</span><span class="p">),</span> <span class="n">blockSizeLimit</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>通过这个接口可以获得让 SM 占用率最大的 <code class="highlighter-rouge">blockDim</code> 和对应的最小 <code class="highlighter-rouge">gridDim</code></li>
+  <li>可以不去关心各种硬件资源的限制写出低开销的调用</li>
+  <li>省去了自己调参数的过程</li>
+</ul>
+
+<!-- slide -->
+
+<h3 id="cudaoccupancymaxactiveblockspermultiprocessor"><code class="highlighter-rouge">cudaOccupancyMaxActiveBlocksPerMultiprocessor</code></h3>
+
+<h2 id="继续减少调度开销">继续减少调度开销</h2>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>让我们以简单的复数拷贝为例。</li>
+  <li>看起来没什么可优化的？</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="n">__global__</span> <span class="nf">primitiveZcopy</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+	<span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+	<span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>上述核函数中，启动多少线程就拷贝多少数据。</li>
+  <li>当启动参数不能恰好表示成两个数的乘积（<code class="highlighter-rouge">blockDim.x * gridDim.x</code>）时，需要多次启动核函数
+    <ul>
+      <li>例如，对<code class="highlighter-rouge">19260817</code>个数进行操作</li>
+    </ul>
+  </li>
+  <li>更复杂的例子中可能不能通过多次启动核函数解决问题</li>
+</ul>
+
+<!-- slide -->
+
+<h3 id="减少核函数启动次数">减少核函数启动次数</h3>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="n">__global__</span> <span class="nf">ifZcopy</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+		<span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>多启动几个线程就是了
+    <ul>
+      <li>CUDA 启动少量线程的开销非常小</li>
+    </ul>
+  </li>
+  <li>需要套个<code class="highlighter-rouge">if</code>
+    <ul>
+      <li>有什么缺点？</li>
+    </ul>
+  </li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>上述写法至少需要启动与元素数量相等的线程数。
+    <ul>
+      <li>不能使用<code class="highlighter-rouge">cudaOccupancyMaxPotentialBlockSize</code>返回的<code class="highlighter-rouge">gridDim</code></li>
+      <li>在对大量数据进行操作的时候，线程过多增加调度开销</li>
+    </ul>
+  </li>
+</ul>
+
+<!-- slide -->
+
+<h3 id="将线程和对应的数据解耦">将线程和对应的数据解耦</h3>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="n">__global__</span> <span class="nf">simpleZcopy</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">+=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">gridDim</span><span class="p">.</span><span class="n">x</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+		<span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>把<code class="highlighter-rouge">if</code>改成<code class="highlighter-rouge">for</code>，完美解决问题！
+    <ul>
+      <li>现在哪怕只启动一个线程，这个核函数也能返回正确结果，降低了依赖</li>
+      <li>配合<code class="highlighter-rouge">cudaOccupancyMaxPotentialBlockSize</code>效果极佳！</li>
+    </ul>
+  </li>
+  <li>在与使用<code class="highlighter-rouge">#pragma omp parallel for</code>并行的代码对比的时候，我们通常会发现，CUDA 版本少了外层的<code class="highlighter-rouge">for</code>。
+    <ul>
+      <li>在这种写法下，爷的青春回来了！</li>
+    </ul>
+  </li>
+  <li>有什么缺点？</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>虽然调度开销减少了，但是线程内部频繁<code class="highlighter-rouge">for</code>跳转！</li>
+</ul>
+
+<!-- slide -->
+
+<h3 id="循环展开">循环展开</h3>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="n">__global__</span> <span class="nf">simpleZcopy</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="cp">#pragma unroll(32)
+</span>	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">+=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">gridDim</span><span class="p">.</span><span class="n">x</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+		<span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>使用编译推导 <code class="highlighter-rouge">#pragma unroll(32)</code> 将循环展开
+    <ul>
+      <li>奇怪的运行常数减少了！</li>
+    </ul>
+  </li>
+  <li>有什么缺点？</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>又多了一个参数需要调！</li>
+  <li>需要循环次数是展开次数的倍数</li>
+</ul>
+
+<!-- slide -->
+
+<h3 id="使用-template-传递编译期常数">使用 <code class="highlighter-rouge">template</code> 传递编译期常数</h3>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span><span class="o">&lt;</span><span class="kt">size_t</span> <span class="n">UNROLL_SIZE</span><span class="p">&gt;</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">simpleZcopy</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">real_in</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">imag_in</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">real_out</span><span class="p">,</span>
+	<span class="kt">double</span> <span class="o">*</span><span class="n">imag_out</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="cp">#pragma unroll(UNROLL_SIZE)
+</span>	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span>
+		 <span class="n">i</span> <span class="o">+=</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">gridDim</span><span class="p">.</span><span class="n">x</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="n">real_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">real_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+		<span class="n">imag_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">imag_in</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>cuda 支持 cpp 语法，使用一些 cpp 语法糖！</li>
+  <li>将编译期就能确定的常数通过 template 传进去！
+    <ul>
+      <li>比 <code class="highlighter-rouge">#define</code> 更优雅</li>
+      <li>方便生成不同展开的版本！</li>
+    </ul>
+  </li>
+  <li>还可以传一些更有用的东西，比如 shared memory 数组的大小！</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="n">numThreads</span><span class="p">,</span> <span class="n">minGridSize</span><span class="p">,</span> <span class="n">blockSize</span><span class="p">;</span>
+<span class="n">cudaOccupancyMaxPotentialBlockSize</span><span class="p">(</span>
+    <span class="o">&amp;</span><span class="n">minGridSize</span><span class="p">,</span>
+    <span class="o">&amp;</span><span class="n">blockSize</span><span class="p">,</span>
+    <span class="n">simpleZcopy</span><span class="o">&lt;</span><span class="mi">32</span><span class="o">&gt;</span><span class="p">);</span>
+<span class="n">numThreads</span> <span class="o">=</span> <span class="n">minGridSize</span> <span class="o">*</span> <span class="n">blockSize</span><span class="p">;</span>
+<span class="k">if</span><span class="p">(</span><span class="n">n</span> <span class="o">%</span> <span class="n">numThreads</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">n</span> <span class="o">/</span> <span class="n">numThreads</span> <span class="o">%</span> <span class="mi">32</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+	<span class="n">simpleZcopy</span><span class="o">&lt;</span><span class="mi">32</span><span class="o">&gt;&lt;&lt;&lt;</span>
+		<span class="n">minGridSize</span><span class="p">,</span>
+		<span class="n">blockSize</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
+		<span class="n">n</span><span class="p">,</span>
+		<span class="n">real_in</span><span class="p">,</span>
+		<span class="n">imag_in</span><span class="p">,</span>
+		<span class="n">real_out</span><span class="p">,</span>
+		<span class="n">imag_out</span><span class="p">);</span>
+<span class="k">else</span>
+	<span class="n">simpleZcopy</span><span class="o">&lt;</span><span class="mi">1</span><span class="o">&gt;&lt;&lt;&lt;</span>
+		<span class="n">minGridSize</span><span class="p">,</span>
+		<span class="n">blockSize</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
+		<span class="n">n</span><span class="p">,</span>
+		<span class="n">real_in</span><span class="p">,</span>
+		<span class="n">imag_in</span><span class="p">,</span>
+		<span class="n">real_out</span><span class="p">,</span>
+		<span class="n">imag_out</span><span class="p">);</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>有什么缺点？</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>代码太丑了！</li>
+  <li>我就想简简单单拷贝一个数据</li>
+  <li>有必要这么麻烦吗</li>
+</ul>
+
+<!-- slide -->
+
+<h2 id="调库">调库</h2>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>这种东西应该第一个讲
+    <ul>
+      <li>调库是一切优化的起点</li>
+      <li>调库是一切优化的终点</li>
+    </ul>
+  </li>
+  <li>一些常见好用的高性能库，已经集成在 cuda toolkit 中
+    <ul>
+      <li><code class="highlighter-rouge">thrust</code>中的 <code class="highlighter-rouge">thrust::copy</code></li>
+      <li><code class="highlighter-rouge">cublas_v2</code>中的 <code class="highlighter-rouge">cublasDcopy</code></li>
+    </ul>
+  </li>
+  <li>本例中甚至可以用 <code class="highlighter-rouge">cudaMemcpy</code></li>
+</ul>
+
+<!-- slide -->
+
+<h2 id="减少-bank-conflict">减少 Bank Conflict</h2>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>这是一个非常简单的分块矩阵乘法$A\times B =C$</li>
+  <li>为了访存对齐，$A$按照列优先的顺序存储</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="kt">size_t</span> <span class="n">BLOCK_SIZE</span><span class="p">&gt;</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">simpleMatMatMul</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">float</span> <span class="o">*</span><span class="n">Ac</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">float</span> <span class="o">*</span><span class="n">B</span><span class="p">,</span>
+	<span class="kt">float</span> <span class="o">*</span><span class="n">C</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">m</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">p</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span>
+		<span class="n">r</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">y</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">,</span>
+		<span class="n">c</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+	<span class="kt">float</span> <span class="n">res</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">t</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">t</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="n">t</span> <span class="o">+=</span> <span class="n">BLOCK_SIZE</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="kt">float</span> <span class="n">__shared__</span>
+			<span class="n">sAc</span><span class="p">[</span><span class="n">BLOCK_SIZE</span><span class="p">][</span><span class="n">BLOCK_SIZE</span><span class="p">],</span>
+			<span class="n">sB</span><span class="p">[</span><span class="n">BLOCK_SIZE</span><span class="p">][</span><span class="n">BLOCK_SIZE</span><span class="p">];</span>
+		<span class="n">__syncthreads</span><span class="p">();</span>
+		<span class="n">sAc</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">r</span> <span class="o">&lt;</span> <span class="n">m</span> <span class="o">&amp;&amp;</span> <span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">n</span> <span class="o">?</span> <span class="n">Ac</span><span class="p">[(</span><span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="n">m</span> <span class="o">+</span> <span class="n">r</span><span class="p">]</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+		<span class="n">sB</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">]</span> <span class="o">=</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">p</span> <span class="o">&amp;&amp;</span> <span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span> <span class="o">&lt;</span> <span class="n">n</span> <span class="o">?</span> <span class="n">B</span><span class="p">[(</span><span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">)</span> <span class="o">*</span> <span class="n">p</span> <span class="o">+</span> <span class="n">c</span><span class="p">]</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+		<span class="n">__syncthreads</span><span class="p">();</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+			<span class="n">res</span> <span class="o">+=</span> <span class="n">sAc</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">]</span> <span class="o">*</span> <span class="n">sB</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">];</span>
+	<span class="p">}</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">r</span> <span class="o">&lt;</span> <span class="n">m</span> <span class="o">&amp;&amp;</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">p</span><span class="p">)</span>
+		<span class="n">C</span><span class="p">[</span><span class="n">r</span> <span class="o">*</span> <span class="n">p</span> <span class="o">+</span> <span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="n">res</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>有什么缺点？</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>GPU 共享内存是基于存储体切换的架构（bank-switched-architecture）。
+    <ul>
+      <li>在 Femi，Kepler，Maxwell 架构的设备上有 32 个存储体（也就是常说的共享内存分成 32 个 bank），而在 G200 与 G80 的硬件上只有 16 个存储体。</li>
+      <li>每个存储体（bank）每个周期只能指向一次操作（一个 32bit 的整数或者一个单精度的浮点型数据），一次读或者一次写，也就是说每个存储体（bank）的带宽为 每周期 32bit。</li>
+    </ul>
+  </li>
+  <li>BLOCK_SIZE 通常是 32 的倍数，同一列的线程访问对应的 Share Memory 访问同一个 bank 的不同地址，发生大量 bank conflict！</li>
+</ul>
+
+<!-- slide vertical=true -->
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="kt">size_t</span> <span class="n">BLOCK_SIZE</span><span class="p">&gt;</span>
+<span class="kt">void</span> <span class="n">__global__</span> <span class="nf">naiveMatMatMul</span><span class="p">(</span>
+	<span class="k">const</span> <span class="kt">float</span> <span class="o">*</span><span class="n">Ac</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">float</span> <span class="o">*</span><span class="n">B</span><span class="p">,</span>
+	<span class="kt">float</span> <span class="o">*</span><span class="n">C</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">m</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+	<span class="k">const</span> <span class="kt">size_t</span> <span class="n">p</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">const</span> <span class="kt">size_t</span>
+		<span class="n">r</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">y</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">,</span>
+		<span class="n">c</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+	<span class="kt">float</span> <span class="n">res</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">t</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">t</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="n">t</span> <span class="o">+=</span> <span class="n">BLOCK_SIZE</span><span class="p">)</span>
+	<span class="p">{</span>
+		<span class="kt">float</span> <span class="n">__shared__</span>
+			<span class="n">sAc</span><span class="p">[</span><span class="n">BLOCK_SIZE</span><span class="p">][</span><span class="n">BLOCK_SIZE</span> <span class="o">|</span> <span class="mi">1</span><span class="p">],</span>
+			<span class="n">sB</span><span class="p">[</span><span class="n">BLOCK_SIZE</span><span class="p">][</span><span class="n">BLOCK_SIZE</span> <span class="o">|</span> <span class="mi">1</span><span class="p">];</span>
+		<span class="n">__syncthreads</span><span class="p">();</span>
+		<span class="n">sAc</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">r</span> <span class="o">&lt;</span> <span class="n">m</span> <span class="o">&amp;&amp;</span> <span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">n</span> <span class="o">?</span> <span class="n">Ac</span><span class="p">[(</span><span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="n">m</span> <span class="o">+</span> <span class="n">r</span><span class="p">]</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+		<span class="n">sB</span><span class="p">[</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">]</span> <span class="o">=</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">p</span> <span class="o">&amp;&amp;</span> <span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span> <span class="o">&lt;</span> <span class="n">n</span> <span class="o">?</span> <span class="n">B</span><span class="p">[(</span><span class="n">t</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">)</span> <span class="o">*</span> <span class="n">p</span> <span class="o">+</span> <span class="n">c</span><span class="p">]</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+		<span class="n">__syncthreads</span><span class="p">();</span>
+		<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+			<span class="n">res</span> <span class="o">+=</span> <span class="n">sAc</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">]</span> <span class="o">*</span> <span class="n">sB</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">];</span>
+	<span class="p">}</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">r</span> <span class="o">&lt;</span> <span class="n">m</span> <span class="o">&amp;&amp;</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">p</span><span class="p">)</span>
+		<span class="n">C</span><span class="p">[</span><span class="n">r</span> <span class="o">*</span> <span class="n">p</span> <span class="o">+</span> <span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="n">res</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<!-- slide vertical=true -->
+
+<ul>
+  <li>Shared Memory 二维数组每一行增加一个偏移位，解决问题！</li>
+</ul>
