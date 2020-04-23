@@ -1,9 +1,9 @@
 
 const BLOG = {
-  author: 'Witt',
-  title: 'Witt - unix.bio',
-  description: 'Hi, I\'m Witt. A JavaScript full stack engineer, I\'m creating apps and libs to help improve the developer experience.',
-  summary: 'JavaScript 工程师，对开发者体验感兴趣。',
+  author: '我是一条鱼',
+  title: '我是一条鱼的博客',
+  description: '',
+  summary: 'java 工程师  python 初学者 投资小白',
   language: 'zh-cn',
   latestLimit: 5,
 
@@ -13,10 +13,10 @@ const BLOG = {
     list: '所有',
   },
 
-  email: 'unix.bio@gmail.com',
-  github: 'unix',
-  twitter: 'echo_witt',
-  domain: 'unix.bio',
+  email: 'hjyjzsn@gmail.com',
+  github: 'jzsn',
+  twitter: '',
+  domain: '',
   
   googleAnalytics: 'UA-110371817-3',
   cn: true,

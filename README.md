@@ -102,9 +102,9 @@ In the **root directory** of the project, you can change the configuration for y
 
 ```js
 const BLOG = {
-  author: 'Witt',               // article author, used on `Meta`
-  title: 'Witt - unix.bio',     // website title
-  description: 'Witt\'s blog',  // used on `Meta`
+  author: '我是一条鱼',               // article author, used on `Meta`
+  title: '我是一条鱼',     // website title
+  description: '我是一条鱼的博客',  // used on `Meta`
   summary: '',                  // one sentence introduction, show on home page
   language: 'en-us',            // 'en-us' or 'zh-cn'
   latestLimit: 5,               // number of home display lists
