@@ -1,97 +1,159 @@
-# 星合の空
+## unix.bio
 
-欢迎访问我的个人主页！下面向你介绍一下我自己吧~
+> Modern static blog template.
 
-<!-- slide -->
 
-## 我的一些联系方式
+[中文文档](./README_CN.md)
 
-- Address: **Sun Yat-sen University - 132 Waihuan East Rd. - Guangzhou, China**
-- Phone: **+86 18756280097**
-- Site: **<https://wu-kan.cn>**
+<br />
 
-<!-- slide vertical=true -->
+### How to use
 
-- E-mail:
-  - **[i@wu-kan.cn](mailto:i@wu-kan.cn)**
-  - **[wukan3@mail2.sysu.edu.cn](mailto:wukan3@mail2.sysu.edu.cn)**
-- WeChat: **Wu-\_-Kan**
-- QQ: **942759535**
+This is the source code of my [blog](https://unix.bio).
 
-<!-- slide -->
+You can also use this project to build your own blog.
 
-## 我的一些教育情况
+ Run `npm init unix-bio` or `yarn create unix-bio` to initialize.
 
-<!-- slide vertical=true -->
+<br />
 
-School of Data and Computer Science, Sun Yat-sen University, Guangzhou, Sept. 2017 - Jul. 2021(expected)
+### Write & Deploy
 
-- Bachelor of Computer Science (Supercomputer Class)
-  - Principle of Supercomputer
-  - Parallel and Distributed Computing
-  - High Performance Computing
+First, Please make sure your [NodeJS](https://nodejs.org/en/) is in the latest version.
 
-<!-- slide -->
+1. In project, run `npm i` to download dependents.
 
-## 我的一些项目成果
+2. run `npm run post` to create your post.
 
-<!-- slide vertical=true -->
+2. run `npm run dev` to browse development page.
 
-- [jekyll-theme-WuK](https://jekyll-theme-WuK.wu-kan.cn/)
-  - 我的个人主页使用的主题样式，也欢迎你用于[搭建自己的页面](https://jekyll-theme-WuK.wu-kan.cn/)~[![Star](https://img.shields.io/github/stars/wu-kan/wu-kan.github.io.svg)](https://github.com/wu-kan/wu-kan.github.io)[![Fork](https://img.shields.io/github/forks/wu-kan/wu-kan.github.io.svg)](https://github.com/wu-kan/wu-kan.github.io/fork)
+3. run `npm i -g now && now` to deploy. (Default deployment to [now](https://now.sh/))
 
-<!-- slide -->
+<br />
 
-## 我的一些成就
+### Features
 
-<!-- slide vertical=true -->
+#### High optimization
 
-- **Top 0.05% in 11395**, [The 18th CCF Certified Software Professional](https://wu-kan.cn/_posts/2019-12-16-%E7%AC%AC%E5%8D%81%E5%85%AB%E6%AC%A1CCF%E8%AE%A1%E7%AE%97%E6%9C%BA%E8%BD%AF%E4%BB%B6%E8%83%BD%E5%8A%9B%E8%AE%A4%E8%AF%81/), Dec. 2019
-- **Silver Medal**, [ICPC Asia Regional Contest Xuzhou Site](https://wu-kan.cn/_posts/2019-11-04-%E5%86%8D%E8%A7%81-%E7%AE%97%E6%B3%95%E7%AB%9E%E8%B5%9B/), Nov. 2019
-- **Second Scholarship**, Oct. 2019
-- **First Prize**, China Collegiate Programming Contest, Guangdong Division, May 2019
+  - High performance optimization thanks to [next.js](http://nextjs.com/)
+  - Perfect SEO support
+  - High readability
+  - Your just need to `write`
 
-<!-- slide vertical=true -->
+<p align="center">
+<img width="500" align="center" src="https://user-images.githubusercontent.com/11304944/77065913-1bba2000-6a1d-11ea-868c-8e96dd09ddd5.png">
+</p>
 
-- **Third Scholarship**, Oct. 2018
-- **First Prize**, China Collegiate Programming Contest, Guangdong Division, May 2018
+<br />
 
-<!-- slide -->
+#### English & Chinese
 
-## 我的一些技能
+You can **switch languages** in the configuration file
 
-<!-- slide vertical=true -->
+<br />
 
-- **C/C++**, Familiar
-  - **OpenMP**, Familiar
-  - **MPI**, Familiar&Learning
-  - **CUDA**, Learning
-- **Python**, Familiar
+#### Write on MDXJS
 
-<!-- slide vertical=true -->
+  - Full markdown support
+  - React Components support
+  - More customization possibilities
 
-- **Markdown**, Familiar
-- **LaTex**, Familiar
-- **Linux**, Familiar&Learning
-- **Git**, Familiar
-- **VSCode**, Familiar
+<p align="center">
+<img width="600" src="https://user-images.githubusercontent.com/11304944/76159776-b33a8b80-615e-11ea-9752-19827e5c900d.png">
+</p>
 
-<!-- slide -->
+<br />
 
-## 我的一些领导力
+#### Dark mode
 
-TBD
+<p align="center">
+<img width="600" src="https://user-images.githubusercontent.com/11304944/79985099-b1dddc00-84dc-11ea-889f-c2c8c61ae6ed.png">
+</p>
+<p align="center">
+<img width="600" src="https://user-images.githubusercontent.com/11304944/79985096-b0141880-84dc-11ea-8d6f-ad52000670ea.png">
+</p>
 
-<!-- slide -->
+<br />
 
-## 我的一些文字
+#### Mobile
 
-- [基于 Jekyll 搭建个人博客](https://wu-kan.cn/_posts/2019-01-18-%E5%9F%BA%E4%BA%8EJekyll%E6%90%AD%E5%BB%BA%E4%B8%AA%E4%BA%BA%E5%8D%9A%E5%AE%A2/)
-- [我的算法竞赛模板](https://wu-kan.cn/_posts/2019-02-04-%E6%88%91%E7%9A%84%E7%AE%97%E6%B3%95%E7%AB%9E%E8%B5%9B%E6%A8%A1%E6%9D%BF/)
-- [这一年的一点感想](https://wu-kan.cn/_posts/2019-07-18-%E8%BF%99%E4%B8%80%E5%B9%B4%E7%9A%84%E4%B8%80%E7%82%B9%E6%84%9F%E6%83%B3/)
+<p align="center">
+<img width="500" src="https://user-images.githubusercontent.com/11304944/79985319-ff5a4900-84dc-11ea-92b5-c152086449d2.png">
+</p>
+<p align="center">
+<img width="500" src="https://user-images.githubusercontent.com/11304944/79985361-139e4600-84dd-11ea-95a8-110894c90576.png">
+</p>
 
-<!-- slide vertical=true -->
+<br />
 
-- [再见，算法竞赛！](https://wu-kan.cn/_posts/2019-11-04-%E5%86%8D%E8%A7%81-%E7%AE%97%E6%B3%95%E7%AB%9E%E8%B5%9B/)
-- [Markdown 写作心得](https://wu-kan.cn/_posts/2020-01-18-Markdown%E5%86%99%E4%BD%9C%E5%BF%83%E5%BE%97/)
-- [今日此时所想之事](https://wu-kan.cn/_posts/2020-01-24-%E4%BB%8A%E6%97%A5%E6%AD%A4%E6%97%B6%E6%89%80%E6%83%B3%E4%B9%8B%E4%BA%8B/)
+#### Social Experience
+
+<p align="center">
+<img width="450" src="https://user-images.githubusercontent.com/11304944/77065600-93d41600-6a1c-11ea-9916-562ec1132026.png">
+</p>
+
+<br />
+
+### Configuration
+
+**First, do not rename any directories！** You can start your writing in the `posts` folder.
+
+In the **root directory** of the project, you can change the configuration for your blog:
+
+```js
+const BLOG = {
+  author: 'Witt',               // article author, used on `Meta`
+  title: 'Witt - unix.bio',     // website title
+  description: 'Witt\'s blog',  // used on `Meta`
+  summary: '',                  // one sentence introduction, show on home page
+  language: 'en-us',            // 'en-us' or 'zh-cn'
+  latestLimit: 5,               // number of home display lists
+  
+  labels: {                     // label text
+    default: 'default',
+    latest: 'latest',
+    list: 'all list',
+  },
+  
+  email: '',                    // about social
+  github: 'unix',
+  twitter: 'echo_witt',
+  domain: 'unix.bio',           // your domain name
+  
+  googleAnalytics: 'UA-x',
+  cn: true,                     // chinese translation of some characters
+  enableViews: false,           // refer to https://docs.views.show
+}
+```
+
+
+<br />
+
+### How to migrate
+
+Timely migration can help you get the latest source code, this includes bug fixes and new features.
+
+Fortunately, we have a easy to use migrate tool, just run:
+
+```shell
+npx unix-bio migrate
+```
+
+<br />
+
+### Deploy only static (Not recommended)
+
+In a few scenarios, you may want to deploy your blog on a CDN or other static server. Use the following commands to deploy:
+
+```bash
+npm run export
+```
+
+After running the command, the generated static file will be in the `/out` directory.
+
+<br />
+
+### LICENSE
+
+[MIT](./LICENSE)
+
