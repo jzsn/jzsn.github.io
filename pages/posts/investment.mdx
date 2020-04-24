@@ -1,8 +1,9 @@
 import Layout from 'lib/components/layout'
-import {} from '@zeit-ui/react'
+import { Spacer, Display, Code, Link, Dot, Image, Snippet, Table } from '@zeit-ui/react'
+
 
 export const meta = {
-  title: 'investment',
+  title: '我对投资这件事的思考',
   date: '2020-04-23T09:21:36.787Z',
   description: '',
   image: '',
@@ -10,40 +11,63 @@ export const meta = {
 
 
 
-function HelloWorld({
-  greeting = "hello",
-  greeted = '"World"',
-  silent = false,
-  onMouseOver,
-}) {
-  if (!greeting) {
-    return null;
-  }
+我们是否需要进行投资？这个问题暂时先不做回答我们首先来看下面这几个数据(以下数据均来自互联网)
 
-  // TODO: Don't use random in render
-  let num = Math.floor(Math.random() * 1e7)
-    .toString()
-    .replace(/\.\d+/gi, "");
 
-  return (
-    <div
-      className="HelloWorld"
-      title={`You are visitor number ${num}`}
-      onMouseOver={onMouseOver}
-    >
-      <strong>
-        {greeting.slice(0, 1).toUpperCase() + greeting.slice(1).toLowerCase()}
-      </strong>
-      {greeting.endsWith(",") ? (
-        " "
-      ) : (
-        <span style={{ color: "grey" }}>", "</span>
-      )}
-      <em>{greeted}</em>
-      {silent ? "." : "!"}
-    </div>
-  );
-}
+<ul>
+    <p><Dot type='success'></Dot>2020年一季度GDP同比下降 <b>6.8%</b> </p>
+    <p><Dot type='success'></Dot>2020年一季度CPI同步上涨 <b>4.9%</b></p>
+    <p><Dot type='success'></Dot>2020年三月 M2余额`208.09万亿元`,同比增长<b>10.1%</b></p>
+    <p><Dot type='success'></Dot>2020年二月银行存款平均利率 一年:1.981%两年:2.600 三年:3.248% 五年:3.121% </p>
+</ul>
+
+
+
+
+(2020年是比较魔幻的一年这些数据可能与历年来的数据相差较大，这里不做计较，只是表述一个观点)
+
+
+首先GDP(国民生产总值)同比下降 6.8% 经济停摆近2个多月，我觉得算是超预期了，之前市场普遍预期都是下降8个点。主要是因为这个疫情。
+（希望疫情早点结束,疫苗赶紧研发出来吧）
+
+
+CPI （物价指数） 一般来说CPI维持在3个点以下说明居民生活压力会比较小。也是到疫情的影响各地没有完全复工复产，供求关系紧张物价上涨，生活成本上升。
+
+
+M2（广义货币） 受到疫情影响，政府逆周期调节势在必行，货币量的增加必然导致货币贬值。但是盲目的防水可能会导致物价飙升，CPI上升，民众生活水深火热。
+钱没有办法流到正确的地方，不做管控可能又到房地产去了，毕竟地产兴邦，实业误国（手动狗头）。
+
+
+以上这些数据基本可以推断
+
+
+
+<ul>
+    <p><Dot type='success'></Dot>你现在可能收入降低or处于已经失业or随时可能失业的状态</p>
+    <p><Dot type='success'></Dot>你的生活成本越来越高，以前很容易就买了的东西现在会思考应不应该买</p>
+    <p><Dot type='success'></Dot>就算你极其节约，你的钱也依然在贬值</p>
+</ul>
+
+
+讲到这里我觉得我们是否需要进行投资大家心里应该已经有了自己的答案。
+
+
+如果处于职业初期，我不建议各位去过多的了解投资相关信息。因为这个时候提升自己的专业技能熟练度，培养解决问题的思路比投资的回报更大，因为任何投资都是
+存在风险的，并不可能保证100%盈利的，而提升你的工作能力，是可以帮助你更轻松的面对工作。你只有能更轻松的面对工作时你才有时间精力去学习你工作之外的知识
+
+
+
+****
+
+
+如果你跟我一样感觉自己需要进行投资，那么可以接着看下去了。
+
+投资的渠道有很多，包括`贵金属` `期货` `债券` `基金` `银行定存` `股票` 等... 他们风险程度是不一样的。
+`你要清楚的知道你的风险承受能力和你所购买产品的风险水平` 这点很重要。 比如最近刷屏的中行原油宝事件，
+原油期货价格变为负数，打破了百年以来的固有认知，算是见证历史了。 我在雪球上看到120份调查问卷结果，真正接
+触过期货的仅有6人占5%  65% 都不知道这个产品是和期货合约挂钩。  这里面很多投资者应该都是不清楚期货的交易规则的。
+如果你购买了一个你都不了解的产品，我相信，长期下来亏损是必然的结果。如果你还能盈利，你上辈子应该拯救了好多次世界。
+
 
 
 
