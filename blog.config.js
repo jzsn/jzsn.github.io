@@ -18,7 +18,7 @@ const BLOG = {
   twitter: '',
   domain: '',
   
-  googleAnalytics: 'UA-110371817-3',
+  googleAnalytics: 'UA-164621813-1',
   cn: true,
   enableViews: true,
   
