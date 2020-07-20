@@ -1295,10 +1295,10 @@
   resolved "https://registry.yarnpkg.com/@xtuc/long/-/long-4.2.2.tgz#d291c6a4e97989b5c61d9acf396ae4fe133a718d"
   integrity sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==
 
-"@zeit-ui/react@^0.0.1-beta.38":
-  version "0.0.1-beta.38"
-  resolved "https://registry.yarnpkg.com/@zeit-ui/react/-/react-0.0.1-beta.38.tgz#3af0d78a3442d6074ccc77bb8aff886b86aea44d"
-  integrity sha512-FmWAFYo/4NaeO7fWzAabf4oqWVBi+bdIkYa6cTDGNDiiNGOmTBG3eRXqjjpb9J6qodGymr2qs4r0ZniD1GDxgQ==
+"@zeit-ui/react@^0.0.1-beta.40":
+  version "0.0.1-beta.41"
+  resolved "https://registry.yarnpkg.com/@zeit-ui/react/-/react-0.0.1-beta.41.tgz#036f31d3201982f0b85a251dbc818c225e0f2ba8"
+  integrity sha512-Mocvt9+2XI5SGv7u+Q3h9rXG4DirWspBsdbmhBk1W4Ma356jow8WntfgvdasLTISfAnyq/uqOCIY1NCAjgYAmA==
   dependencies:
     styled-jsx "^3.2.5"
 
@@ -3280,9 +3280,9 @@ lodash.uniq@4.5.0:
   integrity sha1-0CJTc662Uq3BvILklFM5qEJ1R3M=
 
 lodash@^4.17.11, lodash@^4.17.13:
-  version "4.17.15"
-  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.15.tgz#b447f6670a0455bbfeedd11392eff330ea097548"
-  integrity sha512-8xOcRHvCjnocdS5cpwXQXVzmmh5e5+saE2QGoeQmbKmRS6J3VQppPOIt0MnmE+4xlZoumy0GPG0D0MVIQbNA1A==
+  version "4.17.19"
+  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.19.tgz#e48ddedbe30b3321783c5b4301fbd353bc1e4a4b"
+  integrity sha512-JNvd8XER9GQX0v2qJgsaN/mzFCNA5BRe/j8JN9d+tWyGLSodKQHKFicdwNYzWwI3wjRnaKPsGj1XkBjx/F96DQ==
 
 loose-envify@^1.0.0, loose-envify@^1.1.0, loose-envify@^1.4.0:
   version "1.4.0"
