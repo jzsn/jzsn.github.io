@@ -1295,10 +1295,10 @@
   resolved "https://registry.yarnpkg.com/@xtuc/long/-/long-4.2.2.tgz#d291c6a4e97989b5c61d9acf396ae4fe133a718d"
   integrity sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==
 
-"@zeit-ui/react@^0.0.1-beta.38":
-  version "0.0.1-beta.38"
-  resolved "https://registry.yarnpkg.com/@zeit-ui/react/-/react-0.0.1-beta.38.tgz#3af0d78a3442d6074ccc77bb8aff886b86aea44d"
-  integrity sha512-FmWAFYo/4NaeO7fWzAabf4oqWVBi+bdIkYa6cTDGNDiiNGOmTBG3eRXqjjpb9J6qodGymr2qs4r0ZniD1GDxgQ==
+"@zeit-ui/react@^0.0.1-beta.40":
+  version "0.0.1-beta.41"
+  resolved "https://registry.yarnpkg.com/@zeit-ui/react/-/react-0.0.1-beta.41.tgz#036f31d3201982f0b85a251dbc818c225e0f2ba8"
+  integrity sha512-Mocvt9+2XI5SGv7u+Q3h9rXG4DirWspBsdbmhBk1W4Ma356jow8WntfgvdasLTISfAnyq/uqOCIY1NCAjgYAmA==
   dependencies:
     styled-jsx "^3.2.5"
 
@@ -2179,9 +2179,9 @@ debug@^4.1.0:
     ms "^2.1.1"
 
 decode-uri-component@^0.2.0:
-  version "0.2.0"
-  resolved "https://registry.yarnpkg.com/decode-uri-component/-/decode-uri-component-0.2.0.tgz#eb3913333458775cb84cd1a1fae062106bb87545"
-  integrity sha1-6zkTMzRYd1y4TNGh+uBiEGu4dUU=
+  version "0.2.2"
+  resolved "https://registry.yarnpkg.com/decode-uri-component/-/decode-uri-component-0.2.2.tgz#e69dbe25d37941171dd540e024c444cd5188e1e9"
+  integrity sha512-FqUYQ+8o158GyGTrMFJms9qh3CqTKvAqgqsTnkLI8sKu0028orqBhxNMFkFen0zGyg6epACD32pjVk58ngIErQ==
 
 define-properties@^1.1.2:
   version "1.1.3"
