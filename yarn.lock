@@ -1295,10 +1295,10 @@
   resolved "https://registry.yarnpkg.com/@xtuc/long/-/long-4.2.2.tgz#d291c6a4e97989b5c61d9acf396ae4fe133a718d"
   integrity sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==
 
-"@zeit-ui/react@^0.0.1-beta.38":
-  version "0.0.1-beta.38"
-  resolved "https://registry.yarnpkg.com/@zeit-ui/react/-/react-0.0.1-beta.38.tgz#3af0d78a3442d6074ccc77bb8aff886b86aea44d"
-  integrity sha512-FmWAFYo/4NaeO7fWzAabf4oqWVBi+bdIkYa6cTDGNDiiNGOmTBG3eRXqjjpb9J6qodGymr2qs4r0ZniD1GDxgQ==
+"@zeit-ui/react@^0.0.1-beta.40":
+  version "0.0.1-beta.41"
+  resolved "https://registry.yarnpkg.com/@zeit-ui/react/-/react-0.0.1-beta.41.tgz#036f31d3201982f0b85a251dbc818c225e0f2ba8"
+  integrity sha512-Mocvt9+2XI5SGv7u+Q3h9rXG4DirWspBsdbmhBk1W4Ma356jow8WntfgvdasLTISfAnyq/uqOCIY1NCAjgYAmA==
   dependencies:
     styled-jsx "^3.2.5"
 
@@ -3481,9 +3481,9 @@ minimatch@^3.0.4:
     brace-expansion "^1.1.7"
 
 minimist@^1.2.0, minimist@^1.2.5:
-  version "1.2.5"
-  resolved "https://registry.yarnpkg.com/minimist/-/minimist-1.2.5.tgz#67d66014b66a6a8aaa0c083c5fd58df4e4e97602"
-  integrity sha512-FM9nNUYrRBAELZQT3xeZQ7fmMOBg6nWNmJKTcgsJeaLstP/UODVpGsr5OhXhhXg6f+qtJ8uiZ+PUxkDWcgIXLw==
+  version "1.2.8"
+  resolved "https://registry.yarnpkg.com/minimist/-/minimist-1.2.8.tgz#c1a464e7693302e082a075cee0c057741ac4772c"
+  integrity sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==
 
 mississippi@^3.0.0:
   version "3.0.0"
